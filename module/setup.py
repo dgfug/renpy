@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -37,13 +37,12 @@ os.chdir(BASE)
 # Create the gen directory if it doesn't exist.
 try:
     os.makedirs("gen")
-except:
+except Exception:
     pass
 
 # Generate styles.
 import generate_styles
 generate_styles.generate()
-
 
 # If RENPY_CC or RENPY_LD are in the environment, and CC or LD are not, use them.
 def setup_env(name):
@@ -57,7 +56,7 @@ setup_env("LD")
 setup_env("CXX")
 
 import setuplib
-from setuplib import android, ios, emscripten, raspi, include, library, cython, cmodule, copyfile, find_unnecessary_gen
+from setuplib import android, ios, emscripten, raspi, include, library, cython, cmodule, copyfile, find_unnecessary_gen, generate_all_cython, PY2
 
 # These control the level of optimization versus debugging.
 setuplib.extra_compile_args = [ "-Wno-unused-function" ]
@@ -67,8 +66,11 @@ setuplib.extra_link_args = [ ]
 if platform.win32_ver()[0]:
     windows = True
     setuplib.extra_compile_args.append("-fno-strict-aliasing")
+    tfd_libs = [ "comdlg32", "ole32" ]
+
 else:
     windows = False
+    tfd_libs = [ ]
 
 if raspi:
     setuplib.extra_compile_args.append("-DRASPBERRY_PI")
@@ -77,13 +79,14 @@ include("zlib.h")
 include("png.h")
 include("SDL.h", directory="SDL2")
 include("ft2build.h")
-include("freetype/freetype.h", directory="freetype2", optional=True) or include("freetype.h", directory="freetype2")
-include("libavutil/avstring.h", directory="ffmpeg", optional=True) or include("libavutil/avstring.h")
-include("libavformat/avformat.h", directory="ffmpeg", optional=True) or include("libavformat/avformat.h")
-include("libavcodec/avcodec.h", directory="ffmpeg", optional=True) or include("libavcodec/avcodec.h")
-include("libswscale/swscale.h", directory="ffmpeg", optional=True) or include("libswscale/swscale.h")
+include("freetype/freetype.h", directory="freetype2", optional=True) or include("freetype.h", directory="freetype2") # type: ignore
+include("libavutil/avstring.h", directory="ffmpeg", optional=True) or include("libavutil/avstring.h") # type: ignore
+include("libavformat/avformat.h", directory="ffmpeg", optional=True) or include("libavformat/avformat.h") # type: ignore
+include("libavcodec/avcodec.h", directory="ffmpeg", optional=True) or include("libavcodec/avcodec.h") # type: ignore
+include("libswscale/swscale.h", directory="ffmpeg", optional=True) or include("libswscale/swscale.h") # type: ignore
 include("GL/glew.h")
 include("pygame_sdl2/pygame_sdl2.h", directory="python{}.{}".format(sys.version_info.major, sys.version_info.minor))
+include("hb.h", directory="harfbuzz")
 
 library("SDL2")
 library("png")
@@ -98,21 +101,12 @@ library("z")
 has_libglew = library("GLEW", optional=True)
 has_libglew32 = library("glew32", optional=True)
 
-has_angle = windows and library("EGL", optional=True) and library("GLESv2", optional=True)
-
 if android:
     sdl = [ 'SDL2', 'GLESv2', 'log' ]
     png = 'png16'
 else:
     sdl = [ 'SDL2' ]
     png = 'png'
-
-steam_sdk = os.environ.get("RENPY_STEAM_SDK", None)
-steam_platform = os.environ.get("RENPY_STEAM_PLATFORM", "")
-
-if steam_sdk:
-    setuplib.library_dirs.append("{}/redistributable_bin/{}".format(steam_sdk, steam_platform))
-    setuplib.include_dirs.append("{}/public".format(steam_sdk))
 
 cubism = os.environ.get("CUBISM", None)
 if cubism:
@@ -124,33 +118,10 @@ cython(
     [ "IMG_savepng.c", "core.c" ],
     sdl + [ png, 'z', 'm' ])
 
-FRIBIDI_SOURCES = """
-fribidi-src/lib/fribidi.c
-fribidi-src/lib/fribidi-arabic.c
-fribidi-src/lib/fribidi-bidi.c
-fribidi-src/lib/fribidi-bidi-types.c
-fribidi-src/lib/fribidi-deprecated.c
-fribidi-src/lib/fribidi-joining.c
-fribidi-src/lib/fribidi-joining-types.c
-fribidi-src/lib/fribidi-mem.c
-fribidi-src/lib/fribidi-mirroring.c
-fribidi-src/lib/fribidi-run.c
-fribidi-src/lib/fribidi-shape.c
-renpybidicore.c
-""".split()
-cython(
-    "_renpybidi",
-    FRIBIDI_SOURCES,
-    includes=[
-        BASE + "/fribidi-src/",
-        BASE + "/fribidi-src/lib/",
-        ],
-    define_macros=[
-        ("FRIBIDI_ENTRY", ""),
-        ("HAVE_CONFIG_H", "1"),
-        ])
+cython("_renpybidi", [ "renpybidicore.c" ], [ "fribidi" ])
 
-cython("_renpysteam", language="c++", compile_if=steam_sdk, libs=["steam_api"])
+if not (android or ios or emscripten):
+    cython("_renpytfd", [ "tinyfiledialogs/tinyfiledialogs.c" ], libs=tfd_libs)
 
 # Sound.
 
@@ -171,15 +142,17 @@ cython(
     "renpy.audio.renpysound",
     [ "renpysound_core.c", "ffmedia.c" ],
     libs=sdl + sound,
-    define_macros=macros)
+    define_macros=macros,
+    compile_args=[ "-Wno-deprecated-declarations" ] if ("RENPY_FFMPEG_NO_DEPRECATED_DECLARATIONS" in os.environ) else [ ])
+
+cython("renpy.audio.filter")
 
 # renpy
-cython("renpy.parsersupport")
+cython("renpy.lexersupport")
 cython("renpy.pydict")
 cython("renpy.style")
 
-# renpy.compat
-cython("renpy.compat.dictviews")
+cython("renpy.encryption")
 
 # renpy.styledata
 cython("renpy.styledata.styleclass")
@@ -192,15 +165,10 @@ for p in generate_styles.prefixes:
 cython("renpy.display.matrix")
 cython("renpy.display.render", libs=[ 'z', 'm' ])
 cython("renpy.display.accelerator", libs=sdl + [ 'z', 'm' ])
+cython("renpy.display.quaternion", libs=[ 'm' ])
 
 cython("renpy.uguu.gl", libs=sdl)
 cython("renpy.uguu.uguu", libs=sdl)
-
-cython("renpy.gl.gldraw", libs=sdl)
-cython("renpy.gl.gltexture", libs=sdl)
-cython("renpy.gl.glenviron_shader", libs=sdl)
-cython("renpy.gl.glrtt_copy", libs=sdl)
-cython("renpy.gl.glrtt_fbo", libs=sdl)
 
 cython("renpy.gl2.gl2mesh")
 cython("renpy.gl2.gl2mesh2")
@@ -223,6 +191,12 @@ cython(
     [ "ftsupport.c", "ttgsubtable.c" ],
     libs=sdl + [ 'freetype', 'z', 'm' ])
 
+cython(
+    "renpy.text.hbfont",
+    [ "ftsupport.c" ],
+    libs=sdl + [ 'harfbuzz', 'freetype', 'z', 'm' ])
+
+generate_all_cython()
 find_unnecessary_gen()
 
 # Figure out the version, and call setup.
@@ -230,4 +204,4 @@ sys.path.insert(0, '..')
 
 import renpy
 
-setuplib.setup("Ren'Py", renpy.version[7:]) # @UndefinedVariable
+setuplib.setup("Ren'Py", renpy.version[7:].rstrip('un')) # @UndefinedVariable

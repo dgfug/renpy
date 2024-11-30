@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -181,9 +181,19 @@ init -1500 python:
             persistent._character_volume[voice_tag] = 1.0
 
         if volume is None:
-            return DictValue(persistent._character_volume, voice_tag, 1.0)
+            return _CharacterVolumeValue(voice_tag)
         else:
+            if volume > 0:
+                if config.quadratic_volumes:
+                    volume = volume ** 2
+                else:
+                    volume = (1 - volume) * config.volume_db_range
+                    volume = pow(10, volume / 20.0)
+
+            else:
+                volume = 0
             return SetDict(persistent._character_volume, voice_tag, volume)
+
 
     def GetCharacterVolume(voice_tag):
         """
@@ -333,7 +343,7 @@ init -1500 python:
 
                     self.auto_filename = fn
 
-                    if fn and renpy.loadable(fn):
+                    if fn and renpy.loadable(fn, directory="audio"):
 
                         if _voice.tlid == tlid:
                             self.sustain = True
@@ -424,7 +434,7 @@ init -1500 python hide:
         if (mode is None) or (mode == "with"):
             return
 
-        if getattr(renpy.context(), "_menu", False):
+        if getattr(renpy.context(), "_menu", False) and not _preferences.voice_after_game_menu:
             renpy.sound.stop(channel="voice")
             return
 
@@ -443,8 +453,6 @@ init -1500 python hide:
             _voice.play = vi.filename
         else:
             _voice.play = None
-
-        renpy.game.context().deferred_translate_identifier = None
 
         _voice.auto_file = vi.auto_filename
         _voice.sustain = vi.sustain
@@ -475,6 +483,7 @@ init -1500 python hide:
 
     config.start_interact_callbacks.append(voice_interact)
     config.fast_skipping_callbacks.append(voice_interact)
+    config.nointeract_callbacks.append(voice_interact)
     config.say_sustain_callbacks.append(voice_sustain)
     config.afm_voice_delay = .5
 
@@ -499,10 +508,11 @@ init -1500 python hide:
 
 
 screen _auto_voice:
+    layer config.interface_layer
 
     if _voice.auto_file:
 
-        if renpy.loadable(_voice.auto_file):
+        if renpy.loadable(_voice.auto_file, directory="audio"):
             $ color = "#ffffff"
         else:
             $ color = "#ffcccc"
@@ -538,7 +548,7 @@ python early hide:
         if renpy.emscripten or os.environ.get('RENPY_SIMULATE_DOWNLOAD', False):
             fn = config.voice_filename_format.format(filename=_audio_eval(fn))
             try:
-                with renpy.loader.load(fn) as f:
+                with renpy.loader.load(fn, directory="audio") as f:
                     pass
             except renpy.webloader.DownloadNeeded as exception:
                 renpy.webloader.enqueue(exception.relpath, 'voice', None)
@@ -553,7 +563,7 @@ python early hide:
 
         try:
             fn = config.voice_filename_format.format(filename=fn)
-        except:
+        except Exception:
             return
 
         if not renpy.music.playable(fn, 'voice'):

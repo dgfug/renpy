@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -23,6 +23,8 @@ init python:
 
     def find_itch_butler():
 
+        import requests
+
         if renpy.windows:
             platform = "windows-amd64"
             exe = "butler.exe"
@@ -44,23 +46,16 @@ init python:
 
         try:
             os.makedirs(dn)
-        except:
+        except Exception:
             pass
-
-        import urllib2
 
         with interface.error_handling(_("Downloading the itch.io butler.")):
             url = "https://broth.itch.ovh/butler/{}/LATEST/archive/default".format(platform)
-            req = urllib2.Request(url, headers={'User-Agent' : "Renpy"})
-            response = urllib2.urlopen(req, context=ssl_context())
+
+            response = requests.get(url, headers={'User-Agent' : "Renpy"}, proxies=renpy.proxies)
 
             with open(zip, "wb") as f:
-                while True:
-                    data = response.read(1024 * 1024)
-                    if not data:
-                        break
-
-                    f.write(data)
+                f.write(response.content)
 
         import zipfile
 
@@ -69,7 +64,7 @@ init python:
 
         try:
             os.chmod(exe, 0o755)
-        except:
+        except Exception:
             pass
 
         return exe
@@ -102,32 +97,14 @@ label itch:
         files = [ ]
 
         for fn in os.listdir(destination):
-            fn = os.path.join(destination, fn)
 
-            if fn.endswith("-all.zip"):
-                channel = "win-osx-linux"
-
-            elif fn.endswith("-market.zip"):
-                channel = "win-osx-linux"
-
-            elif fn.endswith("-pc.zip"):
-                channel = "win-linux"
-
-            elif fn.endswith("-win.zip"):
-                channel = "win"
-
-            elif fn.endswith("-mac.zip"):
-                channel = "osx"
-
-            elif fn.endswith("-linux.tar.bz2"):
-                channel = "linux"
-
-            elif fn.endswith("-release.apk"):
-                channel = "android"
-
+            for pattern, channel in reversed(build['itch_channels'].items()):
+                if fnmatch.fnmatch(fn, pattern):
+                    break
             else:
                 continue
 
+            fn = os.path.join(destination, fn)
             files.append((fn, channel))
 
         if not os.path.exists(destination):

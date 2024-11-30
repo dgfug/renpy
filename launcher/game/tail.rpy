@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -22,6 +22,7 @@
 
 init python:
 
+
     class FileTail(object):
 
         def __init__(self, filename, lines=8):
@@ -31,13 +32,18 @@ init python:
 
         def update(self):
 
+            def filter_text(s):
+                if "Unknown chunk type '200'" in s:
+                    return False
+                return True
+
             try:
                 with open(self.filename) as f:
                     text = f.read()
 
                     try:
                         text = renpy.fsdecode(text)
-                    except:
+                    except Exception:
                         text = text.decode("latin-1")
 
                     text = text.strip()
@@ -48,6 +54,9 @@ init python:
 
                         if "\r" in l:
                             _head, _sep, l = l.rpartition("\r")
+
+                        if not filter_text(l):
+                            continue
 
                         while l:
                             newtext.append(l[:100])
@@ -61,8 +70,5 @@ init python:
                         self.text = text
                         renpy.restart_interaction()
 
-            except:
+            except Exception:
                 pass
-
-
-

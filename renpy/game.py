@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -24,9 +24,11 @@
 # be to annoying to lug around otherwise.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
 
-import renpy.display
+from typing import Optional, Any
+
+import renpy
 
 # The basepath.
 basepath = None
@@ -36,23 +38,23 @@ basepath = None
 searchpath = [ ]
 
 # The options that were read off the command line.
-args = None
+args = None # type: Any
 
 # The game's script.
-script = None
+script = None # type: Optional[renpy.script.Script]
 
 # A stack of execution contexts.
 contexts = [ ]
 
 # The interface that the game uses to interact with the user.
-interface = None
+interface = None # type: Optional[renpy.display.core.Interface]
 
 # Are we inside lint?
 lint = False
 
 # The RollbackLog that keeps track of changes to the game state
 # and to the store.
-log = None
+log = None # type: renpy.rollback.RollbackLog|None
 
 # Some useful additional information about program execution that
 # can be added to the exception.
@@ -91,10 +93,16 @@ less_mouse = False
 less_imagedissolve = False
 
 # The persistent data that's kept from session to session
-persistent = None
+persistent = None # type: Any
 
 # The current preferences.
-preferences = None
+preferences = None # type: Any
+
+# Current id of the AST node in script initcode
+initcode_ast_id = 0
+
+# The build_info.
+build_info = { "info" : { } }
 
 
 class ExceptionInfo(object):
@@ -246,20 +254,17 @@ def context(index=-1):
     return contexts[index]
 
 
+
 def invoke_in_new_context(callable, *args, **kwargs): # @ReservedAssignment
     """
-    :doc: label
+    :doc: context
 
     This function creates a new context, and invokes the given Python
     callable (function) in that context. When the function returns
-    or raises an exception, control returns to the the original context.
+    or raises an exception, control returns to the original context.
     It's generally used to call a Python function that needs to display
     information to the player (like a confirmation prompt) from inside
     an event handler.
-
-    A context maintains the state of the display (including what screens
-    and images are being shown) and the audio system. Both are restored
-    when the context returns.
 
     Additional arguments and keyword arguments are passed to the
     callable.
@@ -269,11 +274,25 @@ def invoke_in_new_context(callable, *args, **kwargs): # @ReservedAssignment
     :func:`renpy.jump`, are handled by the outer context. If you want
     to call Ren'Py script rather than a Python function, use
     :func:`renpy.call_in_new_context` instead.
+
+    This takes an optional  keyword argument:
+
+    `_clear_layers`
+        If True (the default), the layers are cleared before the new
+        interaction starts. If False, the layers are not cleared. If a
+        list, only the layers in the list are cleared.
     """
+
+    clear = kwargs.pop('_clear_layers', True)
 
     restart_context = False
 
-    context = renpy.execution.Context(False, contexts[-1], clear=True)
+    if renpy.game.log.current is not None:
+        renpy.game.log.complete()
+
+    renpy.display.focus.clear_focus()
+
+    context = renpy.execution.Context(False, contexts[-1], clear=clear)
     contexts.append(context)
 
     if renpy.display.interface is not None:
@@ -311,7 +330,7 @@ def invoke_in_new_context(callable, *args, **kwargs): # @ReservedAssignment
 
 def call_in_new_context(label, *args, **kwargs):
     """
-    :doc: label
+    :doc: context
 
     This creates a new context, and then starts executing Ren'Py script
     from the given label in that context. Rollback is disabled in the
@@ -320,9 +339,23 @@ def call_in_new_context(label, *args, **kwargs):
 
     Use this to begin a second interaction with the user while
     inside an interaction.
+
+    This takes an optional  keyword argument:
+
+    `_clear_layers`
+        If True (the default), the layers are cleared before the new
+        interaction starts. If False, the layers are not cleared. If a
+        list, only the layers in the list are cleared.
     """
 
-    context = renpy.execution.Context(False, contexts[-1], clear=True)
+    clear = kwargs.pop('_clear_layers', True)
+
+    if renpy.game.log.current is not None:
+        renpy.game.log.complete()
+
+    renpy.display.focus.clear_focus()
+
+    context = renpy.execution.Context(False, contexts[-1], clear=clear)
     contexts.append(context)
 
     if renpy.display.interface is not None:
@@ -334,7 +367,7 @@ def call_in_new_context(label, *args, **kwargs):
         renpy.store._args = None
 
     if kwargs:
-        renpy.store._kwargs = renpy.python.RevertableDict(kwargs)
+        renpy.store._kwargs = renpy.revertable.RevertableDict(kwargs)
     else:
         renpy.store._kwargs = None
 
@@ -363,9 +396,11 @@ def call_replay(label, scope={}):
 
     Calls a label as a memory.
 
-    Keyword arguments are used to set the initial values of variables in the
+    The `scope` argument is used to set the initial values of variables in the
     memory context.
     """
+
+    renpy.display.focus.clear_focus()
 
     renpy.game.log.complete()
 

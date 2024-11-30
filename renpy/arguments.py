@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -27,16 +27,19 @@
 # decide if the game runs or some other action occurs.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
 
 import argparse
 import os
+import sys
+
 import renpy
 
 try:
     import site
-    site._renpy_argv_emulation() # @UndefinedVariable
-except:
+    site._renpy_argv_emulation() # type: ignore
+except Exception:
     pass
 
 # A map from command name to a (function, flag) tuple. The flag is true if the
@@ -116,6 +119,10 @@ class ArgumentParser(argparse.ArgumentParser):
             help='Forces all .rpy scripts to be recompiled before proceeding.')
 
         self.add_argument(
+            "--compile-python", action='store_true', dest='compile_python',
+            help='Forces all Python to be recompiled, rather than read from game/cache/bytecode-*.rpyb.')
+
+        self.add_argument(
             "--keep-orphan-rpyc", action="store_true",
             help="Prevents the compile command from deleting orphan rpyc files.")
 
@@ -139,7 +146,7 @@ class ArgumentParser(argparse.ArgumentParser):
         if second_pass:
             self.add_argument("-h", "--help", action="help", help="Displays this help message, then exits.")
 
-            command = renpy.game.args.command # @UndefinedVariable
+            command = renpy.game.args.command # type: ignore
             self.group = self.add_argument_group("{0} command arguments".format(command), description)
 
     def add_argument(self, *args, **kwargs):
@@ -148,19 +155,12 @@ class ArgumentParser(argparse.ArgumentParser):
         else:
             self.group.add_argument(*args, **kwargs)
 
-    def parse_args(self, *args, **kwargs):
-        rv = argparse.ArgumentParser.parse_args(self, *args, **kwargs)
-
-        if rv.command in compile_commands:
-            rv.compile = True
-
-        if renpy.session.get("compile", False):
-            rv.compile = True
-
-        return rv
 
     def parse_known_args(self, *args, **kwargs):
         args, rest = argparse.ArgumentParser.parse_known_args(self, *args, **kwargs)
+
+        if renpy.session.get("_reload", False):
+            args.compile = False
 
         if args.command in compile_commands:
             args.compile = True
@@ -192,7 +192,8 @@ def run():
 
     args = renpy.game.args = ap.parse_args()
 
-    if args.warp:
+    if args.warp and not renpy.session.get("_warped", False):
+        renpy.session["_warped"] = True
         renpy.warp.warp_spec = args.warp
 
     if args.profile_display: # @UndefinedVariable
@@ -231,7 +232,7 @@ def rmpersistent():
 
     takes_no_arguments("Deletes the persistent data.")
 
-    renpy.loadsave.location.unlink_persistent()
+    renpy.loadsave.location.unlink_persistent() # type: ignore
     renpy.persistent.should_save_persistent = False
 
     return False
@@ -264,7 +265,8 @@ def bootstrap():
     unknown arguments. Returns the parsed arguments, and a list of unknown arguments.
     """
 
-    global rest
+    clean_epic_arguments()
+    clean_macos_arguments()
 
     ap = ArgumentParser(False, require_command=False)
     args, _rest = ap.parse_known_args()
@@ -276,8 +278,6 @@ def pre_init():
     """
     Called before init, to set up argument parsing.
     """
-
-    global subparsers
 
     register_command("run", run, True)
     register_command("lint", renpy.lint.lint)
@@ -293,9 +293,9 @@ def post_init():
     if execution should continue and False otherwise.
     """
 
-    command = renpy.game.args.command # @UndefinedVariable
+    command = renpy.game.args.command # type: ignore
 
-    if command == "run" and renpy.game.args.lint: # @UndefinedVariable
+    if command == "run" and renpy.game.args.lint: # type: ignore
         command = "lint"
 
     if command not in commands:
@@ -314,3 +314,38 @@ def takes_no_arguments(description=None):
     """
 
     ArgumentParser(description=description).parse_args()
+
+
+# If we're running from the Epic Game Store, we need to clean out the
+# arguments passed in from the store, as they're not compatible with
+# Ren'Py.
+
+epic_arguments = None
+
+def clean_epic_arguments():
+
+    for i in sys.argv[1:]:
+        if i.lower().startswith("-epicapp="):
+            break
+    else:
+        return
+
+    global epic_arguments
+    epic_arguments = sys.argv[1:]
+
+    sys.argv = [ sys.argv[0] ]
+
+
+# On macOS a file with the quarantine flag will cause an error on game start:
+# error: unrecognized arguments: -psn_0_some_number_here
+# Let's ignore this -psn argument
+
+def clean_macos_arguments():
+
+    for i in sys.argv[1:]:
+        if i.lower().startswith("-psn"):
+            break
+    else:
+        return
+
+    sys.argv = [ sys.argv[0] ]

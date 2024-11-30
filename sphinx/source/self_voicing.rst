@@ -63,7 +63,7 @@ Creator Concerns
 ----------------
 
 Ren'Py's self-voicing works by extracting text from displayables and
-reading it to the player. Ren'Py extracts this text from two places.
+reading it to the player. Ren'Py extracts this text from multiple places.
 
 Text displayables
     Ren'Py will extract text from a Text displayable, and make it
@@ -71,16 +71,31 @@ Text displayables
 
 Alternative text
     Alternative text is supplied by a displayable's :propref:`alt` style
-    property. It can also be supplied by actions supplied to buttons
-    and values supplied to bars. Explicitly supplied alternative takes
-    precedence over text supplied by actions or values, and both take
-    precedence over text extracted from Text displayables.
+    property. It can also be supplied by instances of the :class:`Action`
+    and :class:`BarValue` classes.
+    Explicitly supplied alternative text takes precedence over text
+    supplied by Actions or BarValues, and both take precedence over
+    text extracted from Text displayables.
 
     Alternative text is translated using Ren'Py's string translation
     mechanism. Alternative text takes precedence over text extracted
     from a displayable and its children, but such child text is made
     available as the "[text]" string substitution. No other string
     substitutions are allowed.
+
+    For example::
+
+        screen information(message, planet, badness):
+            text message:
+                color color_from_badness(badness)
+                alt "Information for you : [text]. Badness is " + str(badness)
+
+            text "ORIGIN_OF_MESSAGE_{color=#f00}[planet!u]{/color}":
+                alt "Origin of message is " + planet
+
+    In the above example, the ``badness`` and ``planet`` variables
+    cannot be substituted directly using "[badness]". Concatenating
+    it manually is a solution.
 
     Supplying the `who_alt` and `what_alt` parameters to Character
     sets the alt style property for the character name and body text,
@@ -90,10 +105,19 @@ Alternative text
 
         define thought = Character(None, what_italic=True, what_alt="I think, [text]")
 
+    In screens, displayables may be given the :scpref:`group_alt` property,
+    which is used to give a group prefix that is spoken the first time a displayable
+    with the same group prefix is focused, but will not be spoken again until a
+    displayable with a different group prefix is focused.
+
+    Displayables may also be given the :scpref:`extra_alt` property, which is spoken
+    when the '?' key is pressed while the displayable is focused. This is intended
+    for more detail information about how a group of controls works.
+
 Descriptive Text
     Descriptive text is text that is displayed (and spoken) by the narrator if
     self-voicing is enabled. The text is not displayed if self-voicing is
-    disabled. Self-voicing text uses the :var:`sv` variable, which is defined to
+    disabled. Self-voicing text uses the :var:`alt` variable, which is defined to
     be similar to a character.
 
     .. var:: alt = ...
@@ -116,8 +140,21 @@ Descriptive Text
     .. var:: config.descriptive_text_character = None
 
         If not None, this should be a character object that is used to
-        display the descriptive text.
+        display the descriptive text, instead of the narrator.
+
+The :var:`config.tts_substitutions` variable can be used to substitute
+words in the text being spoken, to better control pronunciation. The
+:var:`config.tts_voice` variable can be used to select the voice used
+to speak text from the voices on a platform.
 
 A self-voicing debug mode can be enabled by typing Shift+Alt+V. This will
 display the text that would be voiced on the screen for development
 purposes.
+
+
+Python
+------
+
+The following functions are provided by the self-voicing system:
+
+.. include:: inc/self_voicing

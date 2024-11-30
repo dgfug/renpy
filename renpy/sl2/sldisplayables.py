@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -23,17 +23,16 @@
 # Definitions of screen language statements.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
 
-import renpy.display
-import renpy.text.text
-import renpy.sl2
+
+import renpy
 
 from renpy.sl2.slparser import Positional, Keyword, Style, PrefixStyle, add
 from renpy.sl2.slparser import DisplayableParser, many
 
 from renpy.sl2.slproperties import text_properties, box_properties, window_properties
-from renpy.sl2.slproperties import bar_properties, button_properties
+from renpy.sl2.slproperties import bar_properties, button_properties, position_properties
 from renpy.sl2.slproperties import text_position_properties, text_text_properties
 from renpy.sl2.slproperties import side_position_properties
 from renpy.sl2.slproperties import scrollbar_bar_properties, scrollbar_position_properties
@@ -70,12 +69,18 @@ class ShowIf(renpy.display.layout.Container):
 
             self.show_child = replaces.show_child
 
+    @property
+    def _box_skip(self):
+        return (not self.show_child)
+
     def per_interact(self):
         if self.pending_event:
             self.child.set_transform_event(self.pending_event)
             self.pending_event = None
 
     def render(self, width, height, st, at):
+
+        cr = None
 
         if isinstance(self.child, renpy.display.motion.Transform):
             if self.condition or self.show_child:
@@ -86,6 +91,7 @@ class ShowIf(renpy.display.layout.Container):
                 cr = renpy.display.render.render(self.child, width, height, st, at)
                 self.show_child = True
             else:
+                cr = None
                 self.show_child = False
 
         if self.show_child:
@@ -147,6 +153,7 @@ DisplayableParser("side", renpy.display.layout.Side, "side", many)
 Positional("positions")
 Style("spacing")
 
+
 # Omit sizer, as we can always just put an xmaximum and ymaximum on an item.
 
 for name in [ "window", "frame" ]:
@@ -157,11 +164,13 @@ DisplayableParser("key", renpy.ui._key, None, 0)
 Positional("key")
 Keyword("action")
 Keyword("activate_sound")
+Keyword("capture")
 
 DisplayableParser("timer", renpy.display.behavior.Timer, "default", 0, replaces=True)
 Positional("delay")
 Keyword("action")
 Keyword("repeat")
+Keyword("modal")
 
 # Omit behaviors.
 # Omit menu as being too high-level.
@@ -178,6 +187,10 @@ Keyword("changed")
 Keyword("pixel_width")
 Keyword("value")
 Keyword("mask")
+Keyword("caret_blink")
+Keyword("multiline")
+Keyword("action")
+Keyword("arrowkeys")
 Style("caret")
 add(text_properties)
 
@@ -375,6 +388,7 @@ add(viewport_position_properties)
 DisplayableParser("vpgrid", sl2vpgrid, "vpgrid", many, replaces=True, pass_context=True)
 Keyword("rows")
 Keyword("cols")
+Keyword("allow_underfull")
 Keyword("child_size")
 Keyword("mousewheel")
 Keyword("arrowkeys")
@@ -452,16 +466,17 @@ def sl2add(d, replaces=None, scope=None, **kwargs):
 
     if kwargs:
         rv = Transform(child=d, **kwargs)
-        rv._main = d
+        rv._main = d # type: ignore
 
     return rv
 
 
 for name in [ "add", "image" ]:
-    DisplayableParser(name, sl2add, None, 0, replaces=True, default_properties=False, scope=True)
+    DisplayableParser(name, sl2add, None, 0, replaces=True, default_properties=False, scope=True, unique=False)
     Positional("im")
     Keyword("at")
     Keyword("id")
+    Keyword("alt")
     for i in renpy.atl.PROPERTIES:
         Style(i)
 
@@ -471,6 +486,7 @@ Keyword("drag_name")
 Keyword("draggable")
 Keyword("droppable")
 Keyword("drag_raise")
+Keyword("dragging")
 Keyword("dragged")
 Keyword("dropped")
 Keyword("drop_allowable")
@@ -480,10 +496,12 @@ Keyword("drag_offscreen")
 Keyword("clicked")
 Keyword("hovered")
 Keyword("unhovered")
+Keyword("snapped")
 Keyword("focus_mask")
 Keyword("mouse_drop")
 Keyword("alternate")
 Style("child")
+Style("sound")
 
 DisplayableParser("draggroup", renpy.display.dragdrop.DragGroup, None, many, replaces=True)
 Keyword("min_overlap")
@@ -496,6 +514,29 @@ Style("focus_mask")
 DisplayableParser("on", renpy.display.behavior.OnEvent, None, 0)
 Positional("event")
 Keyword("action")
+
+DisplayableParser("nearrect", renpy.display.layout.NearRect, "default", 1, replaces=True)
+Keyword("rect")
+Keyword("focus")
+Keyword("prefer_top")
+Keyword("preferred_side")
+Keyword("invert_offsets")
+
+DisplayableParser("dismiss", renpy.display.behavior.DismissBehavior , "default", 0)
+Keyword("action")
+Keyword("modal")
+Keyword("keysym")
+Style("alt")
+Style("sound")
+
+DisplayableParser("areapicker", renpy.display.behavior.AreaPicker, "default", 1)
+Keyword("rows")
+Keyword("cols")
+Keyword("position")
+Keyword("changed")
+Keyword("finished")
+Keyword("persist")
+
 
 # Ensure that Parsers are no longer added automatically.
 renpy.sl2.slparser.parser = None

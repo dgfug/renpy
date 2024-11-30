@@ -9,8 +9,22 @@ support can be used for many things, from setting a flag to creating
 new displayables. This chapter covers ways in which Ren'Py scripts can
 directly invoke Python, through the various Python statements.
 
-Ren'Py currently supports Python 2.7, though we strongly recommend you write
-Python that runs in Python 2 and Python 3.
+Ren'Py 7 supports Python 2.7. Ren'Py 8 supports Python 3.9.
+
+.. note::
+    If you know Python, you'll be able to take advantage of that. However,
+    not everything you know about Python will apply directly. For example.
+    Python packages that don't ship with Ren'Py may not work inside Ren'Py.
+
+    There are also some Python constructs that work, but may lead to problems
+    in saving. Please read the :doc:`save, load, and rollback <save_load_rollback>` page
+    for more details, especially the section on :ref:`what can't be saved <cant-save>`.
+    (You need to be careful with files, sockets, iterators, task, futures, and
+    generators.)
+
+    Finally, while many statements have Python equivalents, those equivalents
+    can be inferior. For example, Ren'Py can predict the ``show`` statement,
+    and load images early, but it can't predict the :func:`renpy.show` function.
 
 .. _python-statement:
 
@@ -104,7 +118,7 @@ persistent data. ::
 A priority number can be placed between ``init`` and ``python``. When
 a priority is not given, 0 is used. Init statements are run in priority
 order, from lowest to highest. Init statements of the same priority are run in
-Unicode order by filename, and then from top to bottom within a file.
+Unicode order by filepath, and then from top to bottom within a file.
 
 To avoid conflict with Ren'Py, creators should use priorities in the
 range -999 to 999. Priorities of less than 0 are generally used for
@@ -117,23 +131,35 @@ Variables that have their value set in an init python block are not
 saved, loaded, and do not participate in rollback. Therefore, these
 variables should not be changed after init is over.
 
+.. warning::
+
+    Classes created within Ren'py and inheriting nothing or explicitly
+    inheriting ``object``, and subclasses of these classes, do not support
+    ``__slots__``. Trying to do so will misbehave with rollback in older
+    versions of renpy, and will raise errors in newer versions.
+
+    In order to have slotted classes, creators should explicitly subclass
+    ``python_object``, which doesn't support rollback.
+
 .. _define-statement:
 
 Define Statement
 ----------------
 
 The ``define`` statement sets a single variable to a value at init time.
-For example::
+The variable is treated as constant, and should not be changed after
+being set. For example::
 
     define e = Character("Eileen")
 
-is equivalent to::
+is equivalent (except for some advantages, see below) to::
 
     init python:
         e = Character("Eileen")
 
 The define statement can take an optional named store (see below), by
-prepending it to the variable name with a dot. For example::
+prepending it to the variable name with a dot. The store is created
+if it doesn't already exist. For example::
 
     define character.e = Character("Eileen")
 
@@ -147,16 +173,20 @@ operator adds, and is generally used for list concatenaton. The ``|=``
 or operator is generally used to concatenate sets. For example::
 
     define config.keymap["dismiss"] += [ "K_KP_PLUS" ]
-    define endings |= { "best_ending }
+    define endings |= { "best_ending" }
 
 One advantage of using the define statement is that it records the
 filename and line number at which the assignment occurred, and
 makes that available to the navigation feature of the launcher.
+Another advantage is that :ref:`lint` will be able to check defined
+values, for example by detecting whether the same variable is defined
+twice, potentially with different values.
 
 Variables that are defined using the define statement are treated
-as constant, are not saved or loaded, and should not be changed.
-(Ren'Py does not enforce this, but will produce undefined behavior
-when this is not the case.)
+as constant, are not saved or loaded, and should not be changed. This
+constant-nature extends to objects reachable through these variables
+through field access and subscripting. (Ren'Py does not enforce this,
+but will produce undefined behavior when this is not the case.)
 
 .. _default-statement:
 
@@ -181,37 +211,23 @@ When the variable ``points`` is not defined at game load, it's equivalent to::
         $ points = 0
 
 The default statement can take an optional named store (see below), by
-prepending it to the variable name with a dot. For example::
+prepending it to the variable name with a dot. The store is created
+if it doesn't already exist. For example::
 
     default schedule.day = 0
 
+As for the ``define`` statement, :ref:`lint` offers checks and optimizations
+related to the ``default`` statement.
 
-.. _init-offset-statement:
+.. note::
 
-Init Offset Statement
----------------------
-
-The ``init offset`` statement sets a priority offset for all statements
-that run at init time (init, init python, define, default, screen,
-transform, style, and more). The offset applies to all following
-statements in the current block and child blocks, up to the next
-init priority statement. The statement::
-
-    init offset = 42
-
-sets the priority offset to 42. In::
-
-    init offset = 2
-    define foo = 2
-
-    init offset = 1
-    define foo = 1
-
-    init offset = 0
-
-The first define statement is run at priority 2, which means it runs
-after the second define statement, and hence ``foo`` winds up with
-a value of 2.
+    It is highly recommended to ``default`` every variable in your game that is
+    susceptible to change. If you use ``init python`` or ``define`` to declare a
+    variable, when a player play a game and changes that variable, then goes
+    back to the main menu and starts a new game, the variable will not have the
+    value set in ``init python`` and so the former game will "leak" in the newly
+    started one. If you create these variables in the start label instead, they
+    will be missing when you load a save file that existed before.
 
 Names in the Store
 ------------------
@@ -242,21 +258,28 @@ character and a flag. Other things that are usually placed into
 the store are transitions and transforms.
 
 Names beginning with underscore ``_`` are reserved for Ren'Py's
-internal use. In addition, there is an :ref:`Index of Reserved Names <reserved-names>`.
+internal use. In addition, there is an :doc:`Index of Reserved Names <reserved>`.
 
+.. _named-stores:
 
 Other Named Stores
 ------------------
 
 Named stores provide a way of organizing Python functions and variables
-into modules. By placing Python in modules, you can minimize the chance of name
-conflicts.
+into modules. By placing Python in named stores, you can minimize the
+chance of name conflicts. Each store corresponds to a Python module.
+The default store is ``store``, while a named store is accessed as
+``store.named``.
+
+Named stores can be created using ``python in`` blocks (or their
+``init python`` or ``python early`` variants), or using ``default``,
+``define`` or :ref:`transform <transform-statement>` statements. Variables
+in can be imported individually using ``from store.named import variable``,
+and a named store itself can be imported using ``from store import named``.
 
 Named stores can be accessed by supplying the ``in`` clause to
-``python`` or ``init python``, all of which run Python in a named
-store. Each store corresponds to a Python module. The default store is
-``store``, while a named store is accessed as ``store.name``. Names in
-the modules can be imported using the Python ``from`` statement.
+``python`` or ``init python`` (or ``python early``), all of which
+run the Python they contain in the given named store.
 
 For example::
 
@@ -270,13 +293,75 @@ For example::
             serial_number += 1
             return serial_number
 
+    default character_stats.chloe_substore.friends = {"Eileen",}
+
     label start:
         $ serial = mystore.serial()
 
+        if "Lucy" in character_stats.chloe_substore.friends:
+            chloe "Lucy is my friend !"
+        elif character_stats.chloe_substore.friends:
+            chloe "I have friends, but Lucy is not one of them."
+
+        python in character_stats.chloe_substore:
+            friends.add("Jeremy")
+
+
+From a ``python in`` block, the default "outer" store can be
+accessed using either ``renpy.store``, or ``import store``.
 
 Named stores participate in save, load, and rollback in the same way
-that the default store does. The defined statement can be used to
-define names in a named store.
+that the default store does. Special namespaces such as ``persistent``,
+``config``, ``renpy``... do not and never have supported substore creation
+within them.
+
+
+.. _constant-stores:
+
+Constant Stores
+---------------
+
+A named store can be declared to be constant by setting a variable named ``_constant``
+to a true value, using, for example::
+
+    init python in mystore:
+        _constant = True
+
+When a store is constant, variables in that store are not saved, and objects
+reachable solely from those variables do not participate in rollback.
+
+Variables in a constant store can be changed during the init phase. It's only
+after init (including statements like ``define``, ``transform``, etc.) completes
+that the store must be treated as constant.
+
+As Ren'Py has no way of enforcing this, it is the responsibility of the creator
+to ensure that variables in a constant store do not change after the init phase.
+
+The reason for declaring a store constant is that each store and variable
+incurs a small amount of overhead to support saving, loading, and rollback.
+A constant store avoids this overhead.
+
+The following stores are declared constant by default::
+
+    _errorhandling
+    _gamepad
+    _renpysteam
+    _warper
+    audio
+    achievement
+    build
+    director
+    iap
+    layeredimage
+    updater
+
+
+.. _jsondb:
+
+JSONDB
+------
+
+.. include:: inc/jsondb
 
 
 .. _python-modules:
@@ -289,16 +374,16 @@ and packages – ones written for the game – can be placed directly
 into the game directory. Third party packages can be placed into the
 game/python-packages directory.
 
-For example, to install the requests package, one can change into the
+For example, to install the python-dateutil package, one can change into the
 game's base directory, and run the command::
 
-    pip install --target game/python-packages requests
+    pip install --target game/python-packages python-dateutil
 
 In either case, the module or package can be imported from an init python
 block::
 
     init python:
-        import requests
+        import dateutil.parser
 
 .. warning::
 
@@ -306,3 +391,24 @@ block::
     to work. Python imported from .py files is not. As a result,
     objects created in Python will not work with rollback, and
     probably should not be changed after creation.
+
+    Not all Python packages are compatible with Ren'Py. It's up to you
+    to audit the packages you install and make sure the packages will
+    work.
+
+
+.. _exec_py:
+
+Injecting Python
+----------------
+
+Python can be injected into a game at runtime by creating a file named
+``exec.py`` in the base directory. It's suggested that this file is created
+under a different name, edited, and then atomically moved into place.
+
+When Ren'Py sees a file named ``exec.py``, it will load the contents of the file,
+delete the file, and execute the contents in the game store using Python's
+``exec``. This is always done during an interaction.
+
+This is intended to support debugging tools. By default it is enabled when developer
+mode is true, but can also be enabled by setting the RENPY_EXEC_PY environment variable.

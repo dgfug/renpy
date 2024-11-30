@@ -10,7 +10,7 @@
 
     # _developer/developer.rpym:45
     old "Reload Game (Shift+R)"
-    new "Reiniciar juego (Shift+R)"
+    new "Reiniciar juego (Mayús+R)"
 
     # _developer/developer.rpym:47
     old "Console (Shift+O)"
@@ -126,7 +126,7 @@
 
     # 00console.rpy:255
     old "Press <esc> to exit console. Type help for help.\n"
-    new "Presiona <esc> para salir de la consola. Escribe 'help' para la ayuda.\n"
+    new "Presiona <esc> para salir de la consola. Escribe 'help' para obtener ayuda.\n"
 
     # 00console.rpy:259
     old "Ren'Py script enabled."
@@ -162,15 +162,15 @@
 
     # 00console.rpy:533
     old "load <slot>: loads the game from slot"
-    new "load <slot>: carga el juego desde el 'slot'"
+    new "load <slot>: carga el juego desde la ranura"
 
     # 00console.rpy:546
     old "save <slot>: saves the game in slot"
-    new "save <slot>: graba el juego en el 'slot'"
+    new "save <slot>: guarda el juego en la ranura"
 
     # 00console.rpy:557
     old "reload: reloads the game, refreshing the scripts"
-    new "reload: recarga el juego, actualizando los scripts"
+    new "reload: recarga el juego, actualizando los 'scripts'"
 
     # 00console.rpy:565
     old "watch <expression>: watch a python expression"
@@ -207,3 +207,63 @@
     # renpy/common/00console.rpy:929
     old "unescape: Disables escaping of unicode symbols in unicode strings and print it as is (default)."
     new "unescape: Desactiva el escape de símbolos Unicode en cadenas Unicode y lo imprime como está (predeterminado)."
+
+    # renpy/common/00console.rpy:784
+    old "stack: print the return stack"
+    new "stack: imprime la pila de retorno"
+
+    # renpy/common/00console.rpy:781
+    old "help: show this help\n help <expr>: show signature and documentation of <expr>"
+    new "help: muestra esta ayuda\n help <expr>: muestra la firma y la documentación de <expr>"
+
+    # renpy/common/00console.rpy:805
+    old "Help may display undocumented functions. Please check that the function or\nclass you want to use is documented.\n\n"
+    new "La ayuda puede mostrar funciones no documentadas. Por favor, compruebe que la función o\nclase que desea utilizar está documentada.\n\n"
+
+    # renpy/common/_developer/developer.rpym:51
+    old "Persistent Viewer"
+    new "Visor de datos persistentes"
+
+    # renpy/common/_developer/developer.rpym:70
+    old "Speech Bubble Editor (Shift+B)"
+    new "Editor de burbujas de diálogo (Mayús+B)"
+
+    # renpy/common/_developer/developer.rpym:69
+    old "Show Translation Identifiers"
+    new "Mostrar identificadores de traducción"
+
+    # renpy/common/_developer/developer.rpym:72
+    old "Hide Translation Identifiers"
+    new "Ocultar identificadores de traducción"
+
+    # renpy/common/_developer/developer.rpym:582
+    old "\n{color=#fff}Copied to clipboard.{/color}"
+    new "\n{color=#fff}Copiado en el portapapeles.{/color}"
+
+    # renpy/common/_developer/developer.rpym:588
+    old "\n{color=#fff}Click to copy.\nDrag to move.{/color}"
+    new "\n{color=#fff}Haz clic para copiar.\nArrastre para mover.{/color}"
+
+    # renpy/common/_developer/developer.rpym:81
+    old "Show Filename and Line"
+    new "Mostrar nombre de archivo y línea"
+
+    # renpy/common/_developer/developer.rpym:84
+    old "Hide Filename and Line"
+    new "Ocultar nombre de archivo y línea"
+
+    # renpy/common/_developer/developer.rpym:127
+    old "Layer [l]:"
+    new "Capa [l]:"
+
+    # renpy/common/_developer/developer.rpym:131
+    old "    [name] [attributes] (hidden)"
+    new "    [name] [attributes] (ocultar)"
+
+    # renpy/common/_developer/developer.rpym:135
+    old "    [name] [attributes]"
+    new "    [name] [attributes]"
+
+    # renpy/common/_developer/developer.rpym:657
+    old "Click to open in editor."
+    new "Haz clic para abrir en el editor."

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Fixes line endings and adds UTF-8 BOM to all rpy files in a
 # directory.
 
@@ -20,12 +22,14 @@ def process(fn):
         f.write(data)
 
 
-for directory, dirs, files in os.walk(sys.argv[1]):
-    for fn in files:
-        fn = os.path.join(directory, fn)
+for dn in sys.argv[1:]:
 
-        if not fn.endswith(".rpy"):
-            continue
+    for directory, dirs, files in os.walk(dn):
+        for fn in files:
+            fn = os.path.join(directory, fn)
 
-        print(fn)
-        process(fn)
+            if not fn.endswith(".rpy") or fn.endswith(".rpym") or fn.endswith(".py"):
+                continue
+
+            print(fn)
+            process(fn)

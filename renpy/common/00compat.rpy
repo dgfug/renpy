@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -19,7 +19,17 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-init -1900 python:
+init -1100 python:
+
+    def _compat_versions(version, *args):
+        if version <= args[0]:
+            return True
+
+        for i in args[1:]:
+            if (version[0] == i[0]) and (version <= i):
+                return True
+
+        return False
 
     # This is called when script_version is set, to immediately
     # run code in response to a script_version change.
@@ -197,8 +207,6 @@ init -1900 python:
 
         if version <= (7, 3, 5):
             config.side_image_requires_attributes = False
-            config.window_functions_set_auto = False
-            config.hw_video = True
             config.who_what_sub_compat = 0
 
         if version <= (7, 4, 0):
@@ -209,7 +217,6 @@ init -1900 python:
 
         if version <= (7, 4, 4):
             config.pause_after_rollback = True
-            config.gl2 = False
             config.gl_lod_bias = -1.0
             config.who_what_sub_compat = 1
 
@@ -223,7 +230,103 @@ init -1900 python:
 
         if version <= (7, 4, 8):
             config.relative_transform_size = False
+
+        if version <= (7, 4, 10):
+            config.always_unfocus = False
+
+        if version <= (7, 4, 11):
+            config.allow_unfull_vpgrids = True
+            style.drag.focus_mask = True
+            style.default.outline_scaling = "step"
+            config.box_skip = False
+            config.crop_relative_default = False
+            config.layeredimage_offer_screen = False
+            config.narrator_menu = False
+            config.gui_text_position_properties = False
+            config.atl_function_always_blocks = True
+
+        if version <= (7, 4, 11):
+            config.modal_blocks_timer = False
+            config.modal_blocks_pause = False
+        elif _compat_versions(version, (7, 5, 1), (8, 0, 1)):
+            config.modal_blocks_timer = True
+            config.modal_blocks_pause = False
+
+        elif _compat_versions(version, (7, 5, 2), (8, 0, 2)):
+            config.modal_blocks_pause = True
+            config.modal_blocks_timer = True
+
+        if _compat_versions(version, (7, 5, 3), (8, 0, 3)):
+            config.quadratic_volumes = True
+            config.emphasize_audio_volume = 0.5
+            config.relative_spacing = False
+            config.lenticular_bracket_ruby = False
+            config.preserve_volume_when_muted = True
+            config.history_current_dialogue = False
+            config.scry_extend = False
+            config.fadeout_audio = 0.0
+            config.at_transform_compare_full_context = True
+            config.linear_fades = True
+
+            if version > (6, 99, 5):
+                config.search_prefixes.append("images/")
+
+            config.top_layers.remove("top")
+            config.bottom_layers.remove("bottom")
+            config.context_clear_layers.remove("top")
+            config.context_clear_layers.remove("bottom")
+
+            config.sticky_layers.remove("master")
+
+            store._errorhandling._constant = True
+            store._gamepad._constant = True
+            store._renpysteam._constant = True
+            store._warper._constant = True
+            store.audio._constant = True
+            store.achievement._constant = True
+            store.build._constant = True
+            store.director._constant = True
+            store.iap._constant = True
+            store.layeredimage._constant = True
+            store.updater._constant = True
+
+        if _compat_versions(version, (7, 6, 1), (8, 1, 1)):
             config.tts_front_to_back = False
+            _greedy_rollback = False
+            config.dissolve_shrinks = True
+
+        if _compat_versions(version, (7, 6, 99), (8, 1, 99)):
+            config.simple_box_reverse = True
+            build.itch_channels = list(build.itch_channels.items())
+            config.atl_pos_only = True
+            config.atl_pos_only_as_pos_or_kw = True
+            style.default.shaper = "freetype"
+            config.mixed_position = False
+            config.drag_group_add_top = False
+            config.transitions_use_child_placement = False
+            config.interpolate_exprs = False
+            config.containers_pass_transform_events.clear()
+            config.say_replace_event = False
+            config.screens_never_cancel_hide = False
+            config.limit_transform_crop = "only_float"
+
+        if _compat_versions(version, (7, 7, 1), (8, 2, 1)):
+            config.fill_shrinks_frame = True
+
+        if ((7, 4, 0) <= version) and _compat_versions(version, (7, 7, 99), (8, 2, 99)):
+            config.window_functions_set_auto = True
+
+        if _compat_versions(version, (7, 7, 99), (8, 2, 99)):
+            config.character_callback_compat = True
+            bubble.clear_retain_statements = [ ]
+            bubble.layer = None
+            if not _compat_versions(version, (7, 6, 99), (8, 1, 99)):
+                config.box_reverse_align = True
+                config.limit_transform_crop = True
+
+        if version <= (8, 3, 99):
+            config.old_show_expression = True
+
 
     # The version of Ren'Py this script is intended for, or
     # None if it's intended for the current version.
@@ -232,33 +335,39 @@ init -1900 python:
 python early hide:
     try:
         import ast
-        with renpy.file("script_version.txt") as f:
+        with renpy.open_file("script_version.txt", "utf-8") as f:
             script_version = f.read()
         script_version = ast.literal_eval(script_version)
 
         config.early_script_version = script_version
+        config.early_developer = not script_version
 
         if script_version <= (7, 2, 2):
             config.keyword_after_python = True
 
-    except:
+    except Exception:
         config.early_script_version = None
+        config.early_developer = True
         pass
 
 
 init -1000 python hide:
+    import re
+
     try:
         import ast
-        with renpy.file("script_version.txt") as f:
+        with renpy.open_file("script_version.txt", "utf-8") as f:
             script_version = f.read()
         config.script_version = ast.literal_eval(script_version)
         renpy.write_log("Set script version to: %r", config.script_version)
-    except:
+    except Exception:
         pass
-
 
     # 6.99.12.4 didn't add script_version.txt, so we read it from renpy/__init__.py
     # if that exists.
+    #
+    # For really old version, script_version may not be set, so try to read it out of
+    # the renpy that came with the game.
     try:
         if config.script_version is None:
             init_py = os.path.join(renpy.config.basedir, "renpy", "__init__.py")
@@ -267,12 +376,20 @@ init -1000 python hide:
 
             if "version_tuple = (6, 99, 12, 4, vc_version)" in data:
                 config.script_version = (6, 99, 12, 4)
+            elif config.renpy_base != config.basedir:
+                for l in data.splitlines():
+                    m = re.match(r"version = \"Ren'Py ([\.\d]+)", l)
+                    if m:
+                        config.script_version = tuple(int(i) for i in m.group(1).split("."))
+
+
 
             renpy.write_log("Set script version to: %r (alternate path)", config.script_version)
-    except:
+    except Exception:
         pass
 
-init 1900 python hide:
+
+init 1100 python hide:
 
     # This returns true if the script_version is <= the
     # script_version supplied. Give it the last script version
@@ -321,7 +438,7 @@ init 1900 python hide:
             config.layers.append('screens')
 
     if "Fullscreen" in config.translations:
-        fs = _("Fullscreen")
+        fs = __("Fullscreen")
         config.translations.setdefault("Fullscreen 4:3", fs + " 4:3")
         config.translations.setdefault("Fullscreen 16:9", fs + " 16:9")
         config.translations.setdefault("Fullscreen 16:10", fs + " 16:10")
@@ -336,3 +453,9 @@ init 1900 python hide:
         config.has_quicksave = False
         config.quit_action = ui.gamemenus("_confirm_quit")
         config.default_afm_enable = None
+
+    if config.fade_music is not None:
+        config.fadeout_audio = config.fade_music
+
+    config.max_texture_size = (max(config.max_texture_size[0], config.fbo_size[0]),
+                               max(config.max_texture_size[1], config.fbo_size[1]))

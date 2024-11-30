@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -23,7 +23,8 @@
 # called by default, but can be used when problems occur.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
 
 import time
 import weakref
@@ -76,7 +77,7 @@ def print_garbage(gen):
 
         try:
             suffix = " (" + inspect.getfile(i) + ")"
-        except:
+        except Exception:
             pass
 
         print(" -", prefix + repr(i)[:160] + suffix)
@@ -120,7 +121,7 @@ def cycle_finder(o, name):
             o_repr = "<" + o.__class__.__name__ + ">"
 
         elif isinstance(o, types.MethodType):
-            o_repr = "<method {0}.{1}>".format(o.__self__.__class__.__name__, o.__func__.__name__)
+            o_repr = "<method {0}.{1}>".format(o.__self__.__class__.__name__, o.__name__)
 
         elif isinstance(o, object):
             o_repr = "<{0}>".format(type(o).__name__)
@@ -144,8 +145,8 @@ def cycle_finder(o, name):
         else:
 
             try:
-                reduction = o.__reduce_ex__(2)
-            except:
+                reduction = o.__reduce_ex__(2) # type: ignore
+            except Exception:
                 reduction = [ ]
 
             # Gets an element from the reduction, or o if we don't have
@@ -163,10 +164,10 @@ def cycle_finder(o, name):
             else:
                 visit(ido, state, path + ".__getstate__()")
 
-            for i, oo in enumerate(get(3, [])):
+            for i, oo in enumerate(get(3, [])): # type: ignore
                 visit(ido, oo, "{0}[{1}]".format(path, i))
 
-            for i in get(4, []):
+            for i in get(4, []): # type: ignore
 
                 if len(i) != 2:
                     continue
@@ -226,8 +227,9 @@ def walk_memory(roots, seen=None):
     if seen is None:
         seen = { }
 
-    # A list of (name, object) pairs.
-    worklist = [ ]
+    # A deque of (name, object) pairs.
+    # We use a deque because we want to pop from the left.
+    worklist = collections.deque()
 
     # A map from root_name to total_size.
     size = collections.defaultdict(int)
@@ -249,7 +251,7 @@ def walk_memory(roots, seen=None):
     ignore_types = (types.ModuleType, type, types.FunctionType)
 
     while worklist:
-        name, o = worklist.pop(0)
+        name, o = worklist.popleft()
 
         if isinstance(o, ignore_types):
             continue
@@ -529,7 +531,7 @@ def find_parents(cls):
                     print("with name", o["__name__"])
                 else:
                     print(repr(o))
-            except:
+            except Exception:
                 print("Bad repr.")
 
             found = False
@@ -542,7 +544,7 @@ def find_parents(cls):
                 continue
 
             if isinstance(o, weakref.WeakKeyDictionary):
-                for k, v in o.data.items():
+                for k, v in o.items():
                     if v is objects[-4]:
                         k = k()
                         seen.add(id(k))

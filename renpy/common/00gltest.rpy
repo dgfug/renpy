@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -27,8 +27,7 @@ init -1500:
     python:
         class _SetRenderer(Action):
             """
-            Sets the preferred renderer to one of "auto", "angle", "gl", or
-            "sw".
+            Sets the preferred renderer.
             """
 
             def __init__(self, renderer):
@@ -48,6 +47,7 @@ init -1500:
     # This screen can be customized by the creator, provided the actions
     # remain available.
     screen _choose_renderer:
+        layer config.interface_layer
 
         $ gl = False
         $ gles = False
@@ -93,24 +93,6 @@ init -1500:
                     textbutton _("Automatically Choose"):
                         action _SetRenderer("auto")
                         style_suffix "radio_button"
-
-                    if not config.gl2:
-
-                        if gl:
-                            textbutton _("Force GL Renderer"):
-                                action _SetRenderer("gl")
-                                style_suffix "radio_button"
-
-                        if angle:
-                            textbutton _("Force ANGLE Renderer"):
-                                action _SetRenderer("angle")
-                                style_suffix "radio_button"
-
-                        if gles:
-                            textbutton _("Force GLES Renderer"):
-                                action _SetRenderer("gles")
-                                style_suffix "radio_button"
-
 
                     if gl:
                         textbutton _("Force GL2 Renderer"):
@@ -233,6 +215,7 @@ init -1500:
     #
     # `allow_continue` controls whether this error can be ignored.
     screen _performance_warning:
+        layer config.interface_layer
 
         frame:
             style_group ""
@@ -335,8 +318,6 @@ init -1500 python:
         if renpy.mobile:
             return
 
-        renpy.renpy.display.log.write("Performance test:")
-
         # This will cause the screen to start displaying.
         ui.pausebehavior(0)
         ui.interact(suppress_underlay=True, suppress_overlay=True)
@@ -349,14 +330,9 @@ init -1500 python:
 
         renderer_info = renpy.get_renderer_info()
 
-         # Software renderer check.
+        # Software renderer check.
         if config.renderer != "sw" and renderer_info["renderer"] == "sw":
             problem = "sw"
-            allow_continue = False
-
-        # Game require gl2 that wasn't initialized.
-        elif config.gl2 and not renderer_info.get("models", False):
-            problem = "gl2"
             allow_continue = False
 
         if problem is None:
@@ -383,14 +359,14 @@ label _gl_test:
         return
 
     # Show the test image.
-    scene black
+    scene black zorder 0
     show expression config.gl_test_image
     with None
 
     $ __gl_test()
 
     # Hide the test image.
-    scene black
+    scene black zorder 0
 
     return
 

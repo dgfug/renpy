@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -22,7 +22,9 @@
 from __future__ import print_function
 
 from libc.string cimport memset
-from libc.math cimport sin, cos, M_PI as pi
+from libc.math cimport sin, cos
+
+DEF pi = 3.14159265358979323846
 
 cdef float *aligned_1 = [ 1, 0, 0, 0, 0, 1, 0, 0,  0, 0, 1, 0, 0, 0, 0, 1 ]
 cdef float *aligned_2 = [ 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 ]
@@ -33,6 +35,7 @@ fields = [
     "xdz", "ydz", "zdz", "wdz",
     "xdw", "ydw", "zdw", "wdw",
     ]
+# not the same as documented
 
 cdef inline bint absne(float a, float b):
     return abs(a - b) > .0001
@@ -95,6 +98,11 @@ cdef class Matrix:
             0.0, 0.0, 0.0, 1.0,
     """
 
+    _types = "".join(["{} : float\n".format(i) for i in fields])
+
+    def __cinit__(self):
+        self.m = &self.xdx
+
     def __init__(Matrix self, l):
 
         memset(self.m, 0, sizeof(float) * 16)
@@ -107,7 +115,7 @@ cdef class Matrix:
         if lenl == 4:
             (self.xdx, self.xdy,
              self.ydx, self.ydy) = l
-            self.ydy = 1.0
+            self.zdz = 1.0
             self.wdw = 1.0
 
         elif lenl == 9:
@@ -132,6 +140,8 @@ cdef class Matrix:
         for i in range(16):
             rv[fields[i]] = self.m[i]
 
+        rv["origin"] = getattr(self, "origin", None)
+
         return rv
 
     def __setstate__(self, state):
@@ -144,6 +154,8 @@ cdef class Matrix:
         for i in range(16):
             if fields[i] in state:
                 self.m[i] = state[fields[i]]
+
+        self.origin = state.get("origin", None)
 
     def __mul__(Matrix self, Matrix other):
 
@@ -171,18 +183,17 @@ cdef class Matrix:
 
         return rv
 
-    def __getitem__(Matrix self, int index):
-        if 0 <= index < 16:
-            return self.m[index]
+    def is_2d_null(self):
+        """
+        Returns true if a 2D matrix always projects to 0 in the x or y directions.
+        """
 
-        raise IndexError("Matrix index out of range.")
+        if self.xdx == 0.0 and self.xdy == 0.0:
+            return True
+        if self.ydx == 0.0 and self.ydy == 0.0:
+            return True
 
-    def __setitem__(Matrix self, int index, float value):
-        if 0 <= index < 16:
-            self.m[index] = value
-            return
-
-        raise IndexError("Matrix index out of range.")
+        return False
 
     def __repr__(Matrix self):
         cdef int x, y
@@ -193,7 +204,7 @@ cdef class Matrix:
             if y:
                 rv += "\n        "
             for 0 <= x < 4:
-                rv += "{:10.7f}, ".format(self.m[x + y * 4])
+                rv += "{:10.7f}, ".format(self.m[x * 4 + y])
 
         return rv + "])"
 
@@ -209,23 +220,26 @@ cdef class Matrix:
         elif components == 4:
             return (ox, oy, oz, ow)
 
-    def __richcmp__(Matrix self, Matrix other, op):
-
-        if op != 2:
-            return NotImplemented
-
+    def __eq__(Matrix self, other):
         if self is other:
             return True
 
+        if type(self) != type(other):
+            return False
+
         cdef int i
         cdef double total
+        cdef Matrix other_matrix = other
 
         total = 0
 
         for 0 < i < 16:
-            total += abs(self.m[i] - other.m[i])
+            total += abs(self.m[i] - other_matrix.m[i])
 
         return total < .0001
+
+    def __ne__(Matrix self, other):
+        return not (self == other)
 
     cpdef bint is_unit_aligned(Matrix self):
         """

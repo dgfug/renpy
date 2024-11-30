@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -20,22 +20,25 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 import os
 import re
 
-import renpy.translation
+import renpy
 
 ################################################################################
 
 STRING_RE = r"""(?x)
-\b_[_p]?\s*\(\s*[uU]?(
+\b(?:_|__|___|_p)
+\s*(\((?:[\s\\\n]*[uU]?(?:
 \"\"\"(?:\\.|\\\n|\"{1,2}|[^\\"])*?\"\"\"
 |'''(?:\\.|\\\n|\'{1,2}|[^\\'])*?'''
 |"(?:\\.|\\\n|[^\\"])*"
 |'(?:\\.|\\\n|[^\\'])*'
-)\s*\)
+))+\s*\))
 """
 
 REGULAR_PRIORITIES = [
@@ -94,9 +97,13 @@ class String(object):
         else:
             pl = REGULAR_PRIORITIES
 
+        normalized_elided = self.elided.replace("\\", "/")
         for prefix, priority, launcher_file in pl:
-            if self.elided.startswith(prefix):
+            if normalized_elided.startswith(prefix):
                 break
+        else:
+            priority = 500
+            launcher_file = "unknown.rpy"
 
         self.priority = priority
         self.sort_key = (priority, self.filename, self.line)
@@ -121,7 +128,7 @@ def scan_strings(filename):
     for line, s in renpy.game.script.translator.additional_strings[filename]: # @UndefinedVariable
         rv.append(String(filename, line, s, False))
 
-    for _filename, lineno, text in renpy.parser.list_logical_lines(filename):
+    for _filename, lineno, text in renpy.lexer.list_logical_lines(filename):
 
         for m in re.finditer(STRING_RE, text):
 
@@ -130,7 +137,6 @@ def scan_strings(filename):
 
             if s is not None:
                 s = s.strip()
-                s = "u" + s
                 s = eval(s)
 
                 if m.group(0).startswith("_p"):
@@ -183,6 +189,17 @@ def scan_comments(filename):
     return rv
 
 
+def scan_additional_strings():
+
+    rv = [ ]
+
+    for cb in renpy.config.translate_additional_strings_callbacks:
+        for filename, lineno, text in cb():
+            rv.append(String(filename, lineno, text, False))
+
+    return rv
+
+
 def scan(min_priority=0, max_priority=299, common_only=False):
     """
     Scans all files for translatable strings and comments. Returns a list
@@ -201,6 +218,8 @@ def scan(min_priority=0, max_priority=299, common_only=False):
 
         strings.extend(scan_strings(filename))
         strings.extend(scan_comments(filename))
+
+    strings.extend(scan_additional_strings())
 
     strings.sort(key=lambda s : s.sort_key)
 

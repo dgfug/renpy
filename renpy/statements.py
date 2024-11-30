@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -22,7 +22,9 @@
 # This module contains code to support user-defined statements.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 import renpy
 
@@ -43,7 +45,7 @@ def register(
         scry=None,
         block=False,
         init=False,
-        translatable=False,
+        translatable=False, # Not used.
         execute_init=None,
         init_priority=0,
         label=None,
@@ -54,6 +56,8 @@ def register(
         post_label=None,
         predict_all=True,
         predict_next=None,
+        execute_default=None,
+        reachable=None,
 ):
     """
     :doc: statement_register
@@ -67,11 +71,22 @@ def register(
         replace the say statement).
 
     `block`
-        When this is False, the statement does not expect a block. When True, it
-        expects a block, but leaves it up to the lexer to parse that block. If the
-        string "script", the block is interpreted as containing one or more
-        Ren'Py script language statements. If the string "possible", the
-        block expect condition is determined by the parse function.
+        This may be one of:
+
+        * False, to indicate that the satement does not expect a block.
+        * True, to indicate that the statement expects a block and will
+          parse that block.
+        * "possible", to indicate that the statement may or may not take
+          a block.
+        * "script" to indicate that the block shopuld be interpreted as a
+          block of Ren'Py script language statements. See `next` for how
+          to implement control flow using this.
+        * "script-possible" is treated like "script" if a block is present,
+          and False otherwise.
+        * "atl" to indicate that the block should be interpreted as an ATL
+          transsform. This is passed as an additional argument to `execute`.
+        * "atl-possible" is treated like "atl" if a block is present, and
+          and False otherwise.
 
     `parse`
         This is a function that takes a Lexer object. This function should parse the
@@ -84,10 +99,12 @@ def register(
 
     `execute`
         This is a function that is called when the statement executes. It is passed a
-        single argument, the object returned from parse.
+        single argument, the object returned from parse. If there is an ATL block,
+        the keyword argument `atl` is passed with an ATL transform.
 
     `execute_init`
-        This is a function that is called at init time, at priority 0.
+        This is a function that is called at init time, at priority 0. It is passed a
+        single argument, the object returned from parse.
 
     `predict`
         This is a function that is called to predict the images used by the statement.
@@ -103,7 +120,9 @@ def register(
 
         The function should return either a string giving a label to jump to,
         the second argument to transfer control into the block, or None to
-        continue to the statement after this one.
+        continue to the statement after this one. It can also return the result
+        of :meth:`Lexer.renpy_statement` or :meth:`Lexer.renpy_block` when
+        called in the `parse` function.
 
     `label`
         This is a function that is called to determine the label of this
@@ -122,12 +141,22 @@ def register(
     `init`
         True if this statement should be run at init-time. (If the statement
         is not already inside an init block, it's automatically placed inside
-        an init block.) This calls the execute function, in addition to the
-        execute_init function.
+        an init block.)
+
+        You probably don't want this if you have an `execute_init` function,
+        as wrapping the statement in an init block will cause the `execute_init`
+        and `execute` functions to be called at the same time.
+
+    `translatable`
+        If set to true, the statement will be included in a translation
+        block, generally the block containing the succeding say statement.
+        This may only be set to true for one-line statements. It's used
+        for statements like ``nvl clear`` and ``voice``, which may need
+        to be changed with dialogue.
 
     `init_priority`
         An integer that determines the priority of initialization of the
-        init block.
+        init block created by `init` and `execute_init` function.
 
     `translation_strings`
         A function that is called with the parsed block. It's expected to
@@ -160,6 +189,57 @@ def register(
         This should be called to predict the statements that can run after
         this one. It's expected to return a list of of labels or SubParse
         objects. This is not called if `predict_all` is true.
+
+    `execute_default`
+        This is a function that is called at the same time the default
+        statements are run - after the init phase, but before the game starts; when the
+        a save is loaded; after rollback; before lint; and potentially at
+        other times.
+
+        This is called with a single argument, the object returned from parse.
+
+    `reachable`
+        This is a function that is called to allow this statement to
+        customize how it participates in lint's reachability analysis.
+
+        By default, a statement's custom block, sub-parse blocks created
+        with Lexer.renpy_block(), and the statement after the statement
+        are reachable if the statement itself is reachable. The statement
+        is also reachable if it has a label function.
+
+        This can be customized by providing a reachable function. This is
+        a function that takes five arguments (in the following, a "label"
+        may be a string or an opaque object):
+
+        * The object returned by the parse function.
+        * A boolean that is true if the statement is reachable.
+        * The label of the statement.
+        * The label of the next statement, or None if there is no next statement.
+        * If `block` is set to "script", the label of the first statement in the block,
+          or None if there is no block.
+
+        It's expected to return a set that may contain:
+
+        * A label or subparse object of a statement that is reachable.
+        * True, to indicate that this statement should not be reported by lint,
+          but is not intrinsically reachable. (It will become reachable if it
+          is reported reachable by another statement.)
+        * None, which is ignored.
+
+        This function may be called multiple times with both value of is_reachable,
+        to allow the statement to customize its behavior based on whether it's
+        reachable or not. (For example, the next statement may only be reachable
+        if this statement is.)
+
+    .. warning::
+
+        Using the empty string as the name to redefine the say statement is
+        usually a bad idea. That is because when replacing a Ren'Py native
+        statement, its behavior depends on the :doc:`statement_equivalents`. In
+        the case of the say statement, these equivalents do not support the `id`
+        and translation systems. As a result, a game redefining the default
+        statement will not be able to use these features (short of
+        reimplementing them entirely).
     """
 
     name = tuple(name.split())
@@ -183,33 +263,47 @@ def register(
         post_label=post_label,
         predict_all=predict_all,
         predict_next=predict_next,
-
+        execute_default=execute_default,
+        reachable=reachable,
     )
 
-    if block not in [True, False, "script", "possible" ]:
+    if block not in [True, False, "script", "script-possible", "atl", "atl-possible", "possible" ]:
         raise Exception("Unknown \"block\" argument value: {}".format(block))
 
     # The function that is called to create an ast.UserStatement.
     def parse_user_statement(l, loc):
 
-        try:
-            renpy.exports.push_error_handler(l.error)
+        renpy.exports.push_error_handler(l.error)
 
-            old_subparses = l.subparses
+        old_subparses = l.subparses
+
+        try:
             l.subparses = [ ]
 
             text = l.text
             subblock = l.subblock
 
             code_block = None
+            atl = None
 
             if block is False:
                 l.expect_noblock(" ".join(name) + " statement")
             elif block is True:
                 l.expect_block(" ".join(name) + " statement")
+            elif block == "possible":
+                pass
             elif block == "script":
                 l.expect_block(" ".join(name) + " statement")
                 code_block = renpy.parser.parse_block(l.subblock_lexer())
+            elif block == "script-possible":
+                if l.subblock:
+                    code_block = renpy.parser.parse_block(l.subblock_lexer())
+            elif block == "atl":
+                l.expect_block(" ".join(name) + " statement")
+                atl = renpy.atl.parse_atl(l.subblock_lexer())
+            elif block == "atl-possible":
+                if l.subblock:
+                    atl = renpy.atl.parse_atl(l.subblock_lexer())
 
             start_line = l.line
 
@@ -222,7 +316,9 @@ def register(
             rv.translatable = translatable
             rv.translation_relevant = bool(translation_strings)
             rv.code_block = code_block
+            rv.atl = atl
             rv.subparses = l.subparses
+            rv.init_priority = init_priority + l.init_offset
 
         finally:
             l.subparses = old_subparses

@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -59,9 +59,6 @@ init -1700 python:
     # to the main menu.
     config.end_game_transition = None
 
-    # basics: True if autosave should be used.
-    config.has_autosave = True
-
     # basics: True if quicksave has been enabled.
     config.has_quicksave = True
 
@@ -102,11 +99,15 @@ init -1700 python:
         renpy.context_dynamic("_side_image_old")
         renpy.context_dynamic("_side_image_raw")
         renpy.context_dynamic("_side_image")
+        renpy.context_dynamic("_side_image_attributes")
+        renpy.context_dynamic("_side_image_attributes_reset")
 
         store._window_subtitle = config.menu_window_subtitle
         store._window = False
         store._history = False
         store._menu = True
+        store._side_image_attributes = None
+        store._side_image_attributes_reset = False
 
         store.mouse_visible = True
         store.suppress_overlay = True

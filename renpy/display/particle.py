@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -22,11 +22,13 @@
 # This code supports sprite and particle animation.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 from renpy.display.render import render, BLIT
 
-import renpy.display
+import renpy
 import random
 
 
@@ -38,6 +40,8 @@ class SpriteCache(renpy.object.Object):
     need to be re-rendered.
     """
 
+    nosave = [ 'st', 'render' ]
+
     # Private Fields:
     #
     # child - The child displayable.
@@ -47,8 +51,14 @@ class SpriteCache(renpy.object.Object):
     #
     # render - The render of child.
     #
-    # If true, then the render is simple enough it can just be appended to
+    # fast - If true, then the render is simple enough it can just be appended to
     # the manager's render's children list.
+
+    child = None # type: renpy.display.displayable.Displayable|None
+    child_copy = None # type: renpy.display.displayable.Displayable|None
+    st = None # type: float|None
+    render = None # type: renpy.display.render.Render|None
+    fast = False # type: bool
 
 
 class Sprite(renpy.object.Object):
@@ -78,6 +88,17 @@ class Sprite(renpy.object.Object):
 
     The methods of a Sprite object are:
         """
+
+    x = 0 # type: int|float|renpy.display.core.absolute
+    y = 0 # type: int|float|renpy.display.core.absolute
+    zorder = 0 # type: int|float
+
+
+    child = None # type: renpy.display.displayable.Displayable|None
+    render = None # type: renpy.display.render.Render|None
+    live = True # type: bool
+    manager = None # type: SpriteManager|None
+
 
     # Fields:
     #
@@ -127,7 +148,7 @@ class Sprite(renpy.object.Object):
         self.events = False
 
 
-class SpriteManager(renpy.display.core.Displayable):
+class SpriteManager(renpy.display.displayable.Displayable):
     """
     :doc: sprites class
 
@@ -278,7 +299,7 @@ class SpriteManager(renpy.display.core.Displayable):
                 cst = st - cache.st
 
                 cache.render = r = render(cache.child_copy, width, height, cst, cst)
-                cache.fast = (r.operation == BLIT) and (r.forward is None) and (r.alpha == 1.0) and (r.over == 1.0)
+                cache.fast = (r.forward is None) and (not r.mesh) and (not r.uniforms) and (not r.shaders) and (not r.properties) and (not r.xclipping) and not (r.yclipping)
                 rv.depends_on(r)
 
                 caches.append(cache)
@@ -322,7 +343,7 @@ class SpriteManager(renpy.display.core.Displayable):
                 for i in pl:
                     i = renpy.easy.displayable(i)
                     rv.append(i)
-        except:
+        except Exception:
             pass
 
         return rv
@@ -331,7 +352,7 @@ class SpriteManager(renpy.display.core.Displayable):
         self.children = [ ]
 
 
-class Particles(renpy.display.core.Displayable, renpy.python.NoRollback):
+class Particles(renpy.display.displayable.Displayable, renpy.rollback.NoRollback):
     """
     Supports particle motion, using the old API.
     """
@@ -420,7 +441,7 @@ class Particles(renpy.display.core.Displayable, renpy.python.NoRollback):
         return [ self.sm ]
 
 
-class SnowBlossomFactory(renpy.python.NoRollback):
+class SnowBlossomFactory(renpy.rollback.NoRollback):
 
     rotate = False
 
@@ -487,7 +508,7 @@ class SnowBlossomFactory(renpy.python.NoRollback):
         return [ self.image ]
 
 
-class SnowBlossomParticle(renpy.python.NoRollback):
+class SnowBlossomParticle(renpy.rollback.NoRollback):
 
     def __init__(self, image, xspeed, yspeed, border, start, offset, fast, rotate):
 

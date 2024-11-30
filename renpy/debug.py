@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -23,7 +23,9 @@
 # operation.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 import renpy
 import threading
@@ -32,11 +34,9 @@ import traceback
 import os
 import builtins
 import io
+import time
 
-if PY2:
-    real_open = io.open
-else:
-    real_open = builtins.open
+real_open = builtins.open
 
 report = True
 

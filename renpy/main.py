@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -20,14 +20,9 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
 
-import renpy.display
-import renpy.style
-import renpy.sl2
-import renpy.test
-
-import renpy.game as game
+from typing import Tuple, List, Dict, Set, Optional, Iterable, Any
 
 import os
 import sys
@@ -35,8 +30,10 @@ import time
 import zipfile
 import gc
 import linecache
+import json
 
-import __main__
+import renpy
+import renpy.game as game
 
 last_clock = time.time()
 
@@ -111,6 +108,9 @@ def run(restart):
         # to not call quit label since it's not nessesary.
         raise renpy.game.QuitException()
 
+    # Clear obsolete image manipulators.
+    renpy.display.im.ImageBase.obsolete_list = [ ]
+
     if renpy.config.clear_lines:
         renpy.scriptedit.lines.clear()
 
@@ -134,7 +134,7 @@ def run(restart):
     try:
         renpy.exports.log("--- " + time.ctime())
         renpy.exports.log("")
-    except:
+    except Exception:
         pass
 
     # Note if this is a restart.
@@ -153,28 +153,39 @@ def load_rpe(fn):
     with zipfile.ZipFile(fn) as zfn:
         autorun = zfn.read("autorun.py")
 
+    if fn in sys.path:
+        sys.path.remove(fn)
     sys.path.insert(0, fn)
-    exec(autorun, dict())
+    exec(autorun, {'__file__': os.path.join(fn, "autorun.py")})
+
+
+def load_rpe_py(fn):
+
+    with open(fn) as f:
+        autorun = f.read()
+
+    exec(autorun, {'__file__': fn})
 
 
 def choose_variants():
 
     if "RENPY_VARIANT" in os.environ:
-        renpy.config.variants = list(os.environ["RENPY_VARIANT"].split()) + [ None ]
+        renpy.config.variants = list(os.environ["RENPY_VARIANT"].split()) + [ None ] # type: ignore
+        renpy.display.emulator.early_init_emulator()
         return
 
     renpy.config.variants = [ None ]
 
     if renpy.android: # @UndefinedVariable
 
-        renpy.config.variants.insert(0, 'mobile')
-        renpy.config.variants.insert(0, 'android')
+        renpy.config.variants.insert(0, 'mobile') # type: ignore
+        renpy.config.variants.insert(0, 'android') # type: ignore
 
-        import android # @UnresolvedImport
+        import android # type: ignore
         import math
         import pygame_sdl2 as pygame
 
-        from jnius import autoclass # @UnresolvedImport
+        from jnius import autoclass # type: ignore
 
         # Manufacturer/Model-specific variants.
         try:
@@ -187,8 +198,8 @@ def choose_variants():
 
             if manufacturer == "Amazon" and model.startswith("AFT"):
                 print("Running on a Fire TV.")
-                renpy.config.variants.insert(0, "firetv")
-        except:
+                renpy.config.variants.insert(0, "firetv") # type: ignore
+        except Exception:
             pass
 
         # Are we running on OUYA or Google TV or something similar?
@@ -196,32 +207,41 @@ def choose_variants():
 
         if package_manager.hasSystemFeature("android.hardware.type.television"):
             print("Running on a television.")
-            renpy.config.variants.insert(0, "tv")
-            renpy.config.variants.insert(0, "small")
+            renpy.config.variants.insert(0, "tv") # type: ignore
+            renpy.config.variants.insert(0, "small") # type: ignore
             return
 
+        # Running on a chromebook.
+        try:
+            PythonSDLActivity = autoclass("org.renpy.android.PythonSDLActivity")
+            if PythonSDLActivity.isChromebook():
+                print("Running on ChromeOS.")
+                renpy.config.variants.insert(0, 'chromeos') # type: ignore
+        except Exception:
+            pass
+
         # Otherwise, a phone or tablet.
-        renpy.config.variants.insert(0, 'touch')
+        renpy.config.variants.insert(0, 'touch') # type: ignore
 
         pygame.display.init()
 
         info = renpy.display.get_info()
-        diag = math.hypot(info.current_w, info.current_h) / android.get_dpi()
+        diag = math.hypot(info.current_w, info.current_h) / android.get_dpi() # type: ignore
         print("Screen diagonal is", diag, "inches.")
 
         if diag >= 6:
-            renpy.config.variants.insert(0, 'tablet')
-            renpy.config.variants.insert(0, 'medium')
+            renpy.config.variants.insert(0, 'tablet') # type: ignore
+            renpy.config.variants.insert(0, 'medium') # type: ignore
         else:
-            renpy.config.variants.insert(0, 'phone')
-            renpy.config.variants.insert(0, 'small')
+            renpy.config.variants.insert(0, 'phone') # type: ignore
+            renpy.config.variants.insert(0, 'small') # type: ignore
 
     elif renpy.ios:
-        renpy.config.variants.insert(0, 'mobile')
-        renpy.config.variants.insert(0, 'ios')
-        renpy.config.variants.insert(0, 'touch')
+        renpy.config.variants.insert(0, 'mobile') # type: ignore
+        renpy.config.variants.insert(0, 'ios') # type: ignore
+        renpy.config.variants.insert(0, 'touch') # type: ignore
 
-        from pyobjus import autoclass # @UnresolvedImport @Reimport
+        from pyobjus import autoclass # type: ignore
         UIDevice = autoclass("UIDevice")
 
         idiom = UIDevice.currentDevice().userInterfaceIdiom
@@ -231,24 +251,25 @@ def choose_variants():
         # idiom 0 is iPhone, 1 is iPad. We assume any bigger idiom will
         # be tablet-like.
         if idiom >= 1:
-            renpy.config.variants.insert(0, 'tablet')
-            renpy.config.variants.insert(0, 'medium')
+            renpy.config.variants.insert(0, 'tablet') # type: ignore
+            renpy.config.variants.insert(0, 'medium') # type: ignore
         else:
-            renpy.config.variants.insert(0, 'phone')
-            renpy.config.variants.insert(0, 'small')
+            renpy.config.variants.insert(0, 'phone') # type: ignore
+            renpy.config.variants.insert(0, 'small') # type: ignore
 
     elif renpy.emscripten:
-        import emscripten
+        import emscripten # type: ignore
         import re
 
         # web
-        renpy.config.variants.insert(0, 'web')
+        renpy.config.variants.insert(0, 'web') # type: ignore
 
         # mobile
-        userAgent = emscripten.run_script_string(r'''navigator.userAgent''')
-        mobile = re.search('Mobile|Android|iPad|iPhone', userAgent)
+        mobile = emscripten.run_script_int(
+            r'''/Mobile|Android|iPad|iPhone/.test(navigator.userAgent)
+            || (navigator.userAgent.indexOf("Mac") != -1 && navigator.maxTouchPoints > 1)''')
         if mobile:
-            renpy.config.variants.insert(0, 'mobile')
+            renpy.config.variants.insert(0, 'mobile') # type: ignore
         # Reserve android/ios for when the OS API is exposed
         # if re.search('Android', userAgent):
         #    renpy.config.variants.insert(0, 'android')
@@ -263,7 +284,7 @@ def choose_variants():
         if touch == 1:
             # mitigate hybrids (e.g. ms surface) by restricting touch to mobile
             if mobile:
-                renpy.config.variants.insert(0, 'touch')
+                renpy.config.variants.insert(0, 'touch') # type: ignore
 
         # large/medium/small
         # tablet/phone
@@ -278,62 +299,36 @@ def choose_variants():
         # medium reference point: ipad 1024x768, ipad pro 1336x1024 (browser "pixels")
         if mobile:
             if (ref_width < 768 or ref_height < 768):
-                renpy.config.variants.insert(0, 'small')
-                renpy.config.variants.insert(0, 'phone')
+                renpy.config.variants.insert(0, 'small') # type: ignore
+                renpy.config.variants.insert(0, 'phone') # type: ignore
             else:
-                renpy.config.variants.insert(0, 'medium')
-                renpy.config.variants.insert(0, 'tablet')
+                renpy.config.variants.insert(0, 'medium') # type: ignore
+                renpy.config.variants.insert(0, 'tablet') # type: ignore
         else:
-            renpy.config.variants.insert(0, 'large')
+            renpy.config.variants.insert(0, 'large') # type: ignore
 
     else:
-        renpy.config.variants.insert(0, 'pc')
+        renpy.config.variants.insert(0, 'pc') # type: ignore
 
-        renpy.config.variants.insert(0, 'large')
+        renpy.config.variants.insert(0, 'large') # type: ignore
 
 
-def android_searchpath():
+def load_build_info():
     """
-    Determines the searchpath on Android.
+    Loads cache/build_info.json, and uses it to initialize the
+    renpy.game.build_info dictionary.
     """
 
-    # The default gamedir, in private.
-    renpy.config.searchpath = [ renpy.config.gamedir ]
-
-    # The public android directory.
-    if "ANDROID_PUBLIC" in os.environ:
-        android_game = os.path.join(os.environ["ANDROID_PUBLIC"], "game")
-
-        if os.path.exists(android_game):
-            renpy.config.searchpath.insert(0, android_game)
-
-    # Asset packs.
-    packs = [
-        "ANDROID_PACK_FF1",
-        "ANDROID_PACK_FF2",
-        "ANDROID_PACK_FF3",
-        "ANDROID_PACK_FF4",
-    ]
-
-    for i in packs:
-        if i not in os.environ:
-            continue
-
-        assets = os.environ[i]
-
-        for i in [ "renpy/common", "game" ]:
-            dn = os.path.join(assets, i)
-            if os.path.isdir(dn):
-                renpy.config.searchpath.append(dn)
-
-    print("Android search paths:" , " ".join(renpy.config.searchpath))
+    try:
+        f = renpy.exports.open_file("cache/build_info.json", "utf-8")
+        renpy.game.build_info = json.load(f)
+    except Exception:
+        renpy.game.build_info = { "info" : { } }
 
 
 def main():
 
     gc.set_threshold(*renpy.config.gc_thresholds)
-
-    log_clock("Bootstrap to the start of init.init")
 
     renpy.game.exception_info = 'Before loading the script.'
 
@@ -352,42 +347,33 @@ def main():
     # Reset live2d if it exists.
     try:
         renpy.gl2.live2d.reset()
-    except:
+    except Exception:
         pass
 
     # Set up variants.
     choose_variants()
     renpy.display.touch = "touch" in renpy.config.variants
 
-    log_clock("Early init")
+    if (renpy.android or renpy.ios) and not renpy.config.log_to_stdout:
+        print("Version:", renpy.version)
 
     # Note the game directory.
     game.basepath = renpy.config.gamedir
-    renpy.config.searchpath = [ renpy.config.gamedir ]
-
-    # Find the common directory.
-    commondir = __main__.path_to_common(renpy.config.renpy_base) # E1101 @UndefinedVariable
-
-    if os.path.isdir(commondir):
-        renpy.config.searchpath.append(commondir)
-        renpy.config.commondir = commondir
-    else:
-        renpy.config.commondir = None
-
-    # Add path from env variable, if any
-    if "RENPY_SEARCHPATH" in os.environ:
-        renpy.config.searchpath.extend(os.environ["RENPY_SEARCHPATH"].split("::"))
-
-    if renpy.android:
-        renpy.config.commondir = None
-
-        android_searchpath()
+    renpy.config.commondir = renpy.__main__.path_to_common(renpy.config.renpy_base) # E1101 @UndefinedVariable
+    renpy.config.searchpath = renpy.__main__.predefined_searchpath(renpy.config.commondir) # E1101 @UndefinedVariable
 
     # Load Ren'Py extensions.
-    for dir in renpy.config.searchpath: # @ReservedAssignment
-        for fn in os.listdir(dir):
+    for dir in [ renpy.config.renpy_base ] + renpy.config.searchpath: # @ReservedAssignment
+
+        if not os.path.isdir(dir):
+            continue
+
+        for fn in sorted(os.listdir(dir)):
             if fn.lower().endswith(".rpe"):
                 load_rpe(dir + "/" + fn)
+
+            if fn.lower().endswith(".rpe.py"):
+                load_rpe_py(dir + "/" + fn)
 
     # Generate a list of extensions for each archive handler.
     archive_extensions = [ ]
@@ -419,13 +405,15 @@ def main():
     # Start auto-loading.
     renpy.loader.auto_init()
 
-    log_clock("Loader init")
+    load_build_info()
+
+    log_clock("Early init")
 
     # Initialize the log.
     game.log = renpy.python.RollbackLog()
 
     # Initialize the store.
-    renpy.store.store = sys.modules['store']
+    renpy.store.store = sys.modules['store'] # type: ignore
 
     # Set up styles.
     game.style = renpy.style.StyleManager() # @UndefinedVariable
@@ -442,7 +430,7 @@ def main():
     renpy.game.script = renpy.script.Script()
 
     if renpy.session.get("compile", False):
-        renpy.game.args.compile = True
+        renpy.game.args.compile = True # type: ignore
 
     # Set up error handling.
     renpy.exports.load_module("_errorhandling")
@@ -458,14 +446,14 @@ def main():
     # If recompiling everything, remove orphan .rpyc files.
     # Otherwise, will fail in case orphan .rpyc have same
     # labels as in other scripts (usually happens on script rename).
-    if (renpy.game.args.command == 'compile') and not (renpy.game.args.keep_orphan_rpyc): # @UndefinedVariable
+    if (renpy.game.args.command == 'compile') and not (renpy.game.args.keep_orphan_rpyc): # type: ignore
 
         for (fn, dn) in renpy.game.script.script_files:
 
             if dn is None:
                 continue
 
-            if not os.path.isfile(os.path.join(dn, fn + ".rpy")):
+            if not os.path.isfile(os.path.join(dn, fn + ".rpy")) and not os.path.isfile(os.path.join(dn, fn + "_ren.py")):
 
                 try:
                     name = os.path.join(dn, fn + ".rpyc")
@@ -482,7 +470,7 @@ def main():
     renpy.game.script.load_script() # sets renpy.game.script.
     log_clock("Loading script")
 
-    if renpy.game.args.command == 'load-test': # @UndefinedVariable
+    if renpy.game.args.command == 'load-test': # type: ignore
         start = time.time()
 
         for i in range(5):
@@ -497,16 +485,19 @@ def main():
 
     # Find the save directory.
     if renpy.config.savedir is None:
-        renpy.config.savedir = __main__.path_to_saves(renpy.config.gamedir) # E1101 @UndefinedVariable
+        renpy.config.savedir = renpy.__main__.path_to_saves(renpy.config.gamedir) # E1101 @UndefinedVariable
 
-    if renpy.game.args.savedir: # @UndefinedVariable
-        renpy.config.savedir = renpy.game.args.savedir # @UndefinedVariable
+    if renpy.game.args.savedir: # type: ignore
+        renpy.config.savedir = renpy.game.args.savedir # type: ignore
+
+    # Init the save token system.
+    renpy.savetoken.init()
 
     # Init preferences.
     game.persistent = renpy.persistent.init()
     game.preferences = game.persistent._preferences
 
-    for i in renpy.game.persistent._seen_translates: # @UndefinedVariable
+    for i in renpy.game.persistent._seen_translates: # type: ignore
         if i in renpy.game.script.translator.default_translates:
             renpy.game.seen_translates_count += 1
 
@@ -516,13 +507,11 @@ def main():
     # Init save locations and loadsave.
     renpy.savelocation.init()
 
-    # We need to be 100% sure we kill the savelocation thread.
     try:
-
-        # Init save slots.
+        # Init save slots and save tokens.
         renpy.loadsave.init()
-
-        log_clock("Loading save slot metadata.")
+        renpy.savetoken.upgrade_all_savefiles()
+        log_clock("Loading save slot metadata")
 
         # Load persistent data from all save locations.
         renpy.persistent.update()
@@ -533,16 +522,18 @@ def main():
         game.seen_session = { }
 
         # Initialize persistent variables.
-        renpy.store.persistent = game.persistent
-        renpy.store._preferences = game.preferences
-        renpy.store._test = renpy.test.testast._test
+        renpy.store.persistent = game.persistent # type: ignore
+        renpy.store._preferences = game.preferences # type: ignore
+        renpy.store._test = renpy.test.testast._test # type: ignore
 
         if renpy.parser.report_parse_errors():
             raise renpy.game.ParseErrorException()
 
         renpy.game.exception_info = 'While executing init code:'
 
-        for _prio, node in game.script.initcode:
+        for id_, (_prio, node) in enumerate(game.script.initcode):
+
+            renpy.game.initcode_ast_id = id_
 
             if isinstance(node, renpy.ast.Node):
                 node_start = time.time()
@@ -570,12 +561,14 @@ def main():
         for i in renpy.game.post_init:
             i()
 
+        renpy.config.post_init()
+
         renpy.game.script.report_duplicate_labels()
 
         # Sort the images.
         renpy.display.image.image_names.sort()
 
-        game.persistent._virtual_size = renpy.config.screen_width, renpy.config.screen_height
+        game.persistent._virtual_size = renpy.config.screen_width, renpy.config.screen_height # type: ignore
 
         log_clock("Running init code")
 
@@ -586,6 +579,10 @@ def main():
         renpy.game.script.analyze()
         renpy.atl.compile_all()
         log_clock("Analyze and compile ATL")
+
+        renpy.savelocation.init()
+        renpy.loadsave.init()
+        log_clock("Reloading save slot metadata")
 
         # Index the archive files. We should not have loaded an image
         # before this point. (As pygame will not have been initialized.)
@@ -601,7 +598,7 @@ def main():
 
         renpy.dump.dump(False)
         renpy.game.script.make_backups()
-        log_clock("Dump and make backups.")
+        log_clock("Dump and make backups")
 
         # Initialize image cache.
         renpy.display.im.cache.init()
@@ -610,6 +607,9 @@ def main():
         # Make a clean copy of the store.
         renpy.python.make_clean_stores()
         log_clock("Making clean stores")
+
+        # Init the keymap.
+        renpy.display.behavior.init_keymap()
 
         gc.collect(2)
 
@@ -629,7 +629,7 @@ def main():
         else:
             gc.set_threshold(700, 10, 10)
 
-        log_clock("Initial gc.")
+        log_clock("Initial gc")
 
         # Start debugging file opens.
         renpy.debug.init_main_thread_open()
@@ -652,18 +652,24 @@ def main():
                     run(restart)
                 finally:
                     restart = (renpy.config.end_game_transition, "_invoke_main_menu", "_main_menu")
-                    renpy.persistent.update(True)
-                    renpy.persistent.save_MP()
+
+            except renpy.game.QuitException:
+
+                renpy.audio.audio.fadeout_all()
+                raise
 
             except game.FullRestartException as e:
                 restart = e.reason
 
             finally:
 
+                renpy.persistent.update(True)
+                renpy.persistent.save_on_quit_MP()
+
                 # Reset live2d if it exists.
                 try:
                     renpy.gl2.live2d.reset_states()
-                except:
+                except Exception:
                     pass
 
                 # Flush any pending interface work.
@@ -671,6 +677,10 @@ def main():
 
                 # Give Ren'Py a couple of seconds to finish saving.
                 renpy.loadsave.autosave_not_running.wait(3.0)
+
+                # Run the at exit callbacks.
+                for cb in renpy.config.at_exit_callbacks:
+                    cb()
 
     finally:
 

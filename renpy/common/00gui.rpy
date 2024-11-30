@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -19,11 +19,13 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-init -1100 python in gui:
+init -1150 python in gui:
     from store import config, layout, _preferences, Frame, Null, persistent, Action, DictEquality
     import math
 
     config.translate_clean_stores.append("gui")
+
+    config.gui_text_position_properties = True
 
     _null = Null()
 
@@ -76,6 +78,36 @@ init -1100 python in gui:
         if persistent._gui_preference_default is None:
             persistent._gui_preference_default = { }
 
+    # A list of variant, function tuples.
+    variant_functions = [ ]
+
+    def variant(f, variant=None):
+        """
+        :doc: gui
+
+        A decorator that causes a function to be called when the gui is first
+        initialized, and again each time the gui is rebuilt.  This is intended
+        to be used as a function decorator,  of the form::
+
+            @gui.variant
+            def small():
+                gui.text_size = 30
+                # ...
+
+        It can also be called with `f` (a function) and `variant` (a string),
+        giving the variant name.
+        """
+
+        if variant is None:
+            variant = f.__name__
+
+        variant_functions.append((variant, f))
+
+        if renpy.variant(variant):
+            f()
+
+        return f
+
     def rebuild():
         """
         :doc: gui
@@ -85,7 +117,16 @@ init -1100 python in gui:
         Note: This is a very slow function.
         """
 
+        global variant_functions
+        old_variant_functions = variant_functions
+
         renpy.ast.redefine([ "store.gui" ])
+
+        variant_functions = old_variant_functions
+
+        for variant, f in variant_functions:
+            if renpy.variant(variant):
+                f()
 
         for i in config.translate_clean_stores:
             renpy.python.clean_store_backup.backup_one("store." + i)
@@ -96,16 +137,19 @@ init -1100 python in gui:
 
     not_set = object()
 
+    preferences_with_default = set()
+
     def preference(name, default=not_set):
         """
         :doc: gui_preference
+        :args: (name, default=...)
 
         This function returns the value of the gui preference with
         `name`.
 
         `default`
             If given, this value becomes the default value of the gui
-            preference. The default value should be given the first time
+            preference. The default value must be given the first time
             the preference is used.
         """
 
@@ -114,9 +158,16 @@ init -1100 python in gui:
         defaults = persistent._gui_preference_default
 
         if default is not not_set:
+
+            preferences_with_default.add(name)
+
             if (name not in defaults) or (defaults[name] != default):
                 prefs[name] = default
                 defaults[name] = default
+
+        else:
+            if config.developer and (name not in preferences_with_default):
+                raise Exception("Gui preference %r is not set, and does not have a default value." % name)
 
         return prefs[name]
 
@@ -187,7 +238,8 @@ init -1100 python in gui:
             else:
                 prefs[self.name] = self.a
 
-            rebuild()
+            if self.rebuild:
+                rebuild()
 
         def get_selected(self):
             prefs = persistent._gui_preference
@@ -289,6 +341,8 @@ init -1100 python in gui:
 
         Given a `kind` of button, returns a dictionary giving standard style
         properties for that button. This sets:
+        Given a `kind` of textbutton, returns a dictionary giving standard style
+        properties for the text inside that button. This sets:
 
         :propref:`font`
             To gui.kind_text_font, if it exists.
@@ -299,7 +353,7 @@ init -1100 python in gui:
         :propref:`xalign`
             To gui.kind_text_xalign, if it exists.
 
-        :propref:`text_align`
+        :propref:`textalign`
             To gui.kind_text_xalign, if it exists.
 
         :propref:`layout`
@@ -326,7 +380,10 @@ init -1100 python in gui:
         selected_color
             To gui.kind_text_selected_color, if it exists.
 
-        All other :ref:`text style properties <text-style-properties>` are also available. For
+        All other :ref:`text style properties <text-style-properties>`
+        are available. When `kind` is not None,
+        :ref:`position style properties <position-style-properties>`
+        are also available. For
         example, gui.kind_text_outlines sets the outlines style property,
         gui.kind_text_kerning sets kerning, and so on.
         """
@@ -358,12 +415,19 @@ init -1100 python in gui:
             if xalign is not None:
                 rv["xalign"] = xalign
                 rv["text_align"] = xalign
+                rv["textalign"] = xalign
 
                 if (xalign > 0) and (xalign < 1):
                     rv["layout"] = "subtitle"
 
+        if (kind is not None) and config.gui_text_position_properties:
+            property_names = renpy.sl2.slproperties.text_property_names + renpy.sl2.slproperties.position_property_names
+        else:
+            property_names = renpy.sl2.slproperties.text_property_names
+
         for prefix in renpy.sl2.slparser.STYLE_PREFIXES:
-            for property in renpy.sl2.slproperties.text_property_names:
+            for property in property_names:
+
                 prop = prefix + property
 
                 text_prop = "text_" + prop
@@ -387,10 +451,13 @@ init -1100 python in gui:
     LOADING = _("Loading will lose unsaved progress.\nAre you sure you want to do this?")
     QUIT = _("Are you sure you want to quit?")
     MAIN_MENU = _("Are you sure you want to return to the main menu?\nThis will lose unsaved progress.")
+    CONTINUE = _("Are you sure you want to continue where you left off?")
     END_REPLAY = _("Are you sure you want to end the replay?")
     SLOW_SKIP = _("Are you sure you want to begin skipping?")
     FAST_SKIP_SEEN = _("Are you sure you want to skip to the next choice?")
     FAST_SKIP_UNSEEN = _("Are you sure you want to skip unseen dialogue to the next choice?")
+    UNKNOWN_TOKEN = _("This save was created on a different device. Maliciously constructed save files can harm your computer. Do you trust this save's creator and everyone who could have changed the file?")
+    TRUST_TOKEN = _("Do you trust the device the save was created on? You should only choose yes if you are the device's sole user.")
 
     ############################################################################
     # Image generation. This lives here since it wants to read data from
@@ -434,7 +501,7 @@ init -1100 python in gui:
 
                 try:
                     os.makedirs(dn, 0o777)
-                except:
+                except Exception:
                     pass
 
                 if os.path.exists(fn):
@@ -452,12 +519,7 @@ init -1100 python in gui:
                     if not gui._skip_backup:
                         os.rename(fn, bfn)
 
-                import cStringIO
-                sio = cStringIO.StringIO()
-                renpy.display.module.save_png(s, sio, 3)
-
-                with open(fn, "wb") as f:
-                    f.write(sio.getvalue())
+                pygame_sdl2.image.save(s, fn, 3)
 
             def fill(self, color=None):
                 if color is None:
@@ -584,11 +646,3 @@ init -1100 python in gui:
         return False
 
     renpy.arguments.register_command("gui_images", _gui_images)
-
-
-
-
-
-
-
-

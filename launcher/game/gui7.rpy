@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -22,6 +22,10 @@
 define gui.project_system_font = None
 define gui.asian = False
 
+# This is set in new_project before new_template_project is called,
+# and provides the full path to the template project.
+default gui_template_path = None
+
 init -1 python:
 
     import gui7
@@ -31,7 +35,7 @@ init -1 python:
 
     from store import config
 
-    def translate_font(language, font, path=None):
+    def translate_font(language, font):
         """
         Selects the font file that is used when translating `language`.
 
@@ -39,26 +43,17 @@ init -1 python:
             Is the name of the font file used for both the launcher and
             the new GUI template. This should be a string giving the name
             of the font file.
-
-        `path`
-            The path to the font file, relative to the launcher's game
-            directory. If not given, defaults to fonts.
         """
 
-        if path is None:
-            path = "fonts"
-
-        fullfont = path + "/" + font
-
         def callback():
-            gui.REGULAR_FONT = fullfont
-            gui.LIGHT_FONT = fullfont
+            gui.REGULAR_FONT = font
+            gui.LIGHT_FONT = font
             gui.REGULAR_BOLD = True
 
-            style._default.font = fullfont
-            style.default.font = fullfont
+            style._default.font = font
+            style.default.font = font
 
-            gui.system_font = fullfont
+            gui.system_font = font
             gui.project_system_font = font
 
         config.language_callbacks[language].append(callback)
@@ -66,7 +61,7 @@ init -1 python:
         def s(s):
             return '"' + s + '"'
 
-        gui7.translate_copy(language, fullfont, font)
+        gui7.translate_copy(language, "sdk-fonts/" + font, font)
         gui7.translate_define(language, "gui.text_font", s(font))
         gui7.translate_define(language, "gui.name_text_font", s(font))
         gui7.translate_define(language, "gui.interface_text_font", s(font))
@@ -337,15 +332,18 @@ label gui_project_size:
 
     python:
 
+        default_size = (1920, 1080)
+
         gui_size = interface.choice(
-            _("What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of 1280x720 is a reasonable compromise."),
+            _("What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of [default_size[0]]x[default_size[1]] is a reasonable compromise."),
             [
-                ((1066, 600), "1066x600"),
                 ((1280, 720), "1280x720"),
                 ((1920, 1080), "1920x1080"),
+                ((2560, 1440), "2560x1440"),
+                ((3840, 2160), "3840x2160"),
                 ("custom", _("Custom. The GUI is optimized for a 16:9 aspect ratio.")),
             ],
-            (1280, 720),
+            default_size,
             cancel=Jump("front_page"),
         )
 
@@ -362,7 +360,7 @@ label gui_project_size:
 
                 try:
                     gui_width = int(gui_width)
-                except:
+                except Exception:
                     interface.error(_("The width must be a number."), label=None)
                     continue
                 break
@@ -378,7 +376,7 @@ label gui_project_size:
 
                 try:
                     gui_height = int(gui_height)
-                except:
+                except Exception:
                     interface.error(_("The height must be a number."), label=None)
                     continue
                 break
@@ -452,5 +450,54 @@ label gui_generate_images:
         interface.processing(_("Updating the project..."))
         project.current.launch([ 'gui_images' ], env={ "RENPY_VARIANT" : "small phone" }, wait=True)
         project.current.launch([ 'gui_images' ], wait=True)
+
+    jump front_page
+
+label new_template_project:
+
+    # Unused in new_template_project.
+    $ gui_size = (1920, 1080)
+    $ gui_color = (DARK_COLORS[0], "#000000", False)
+
+    python hide:
+
+        width, height = gui_size
+        accent, boring, light = gui_color
+
+        prefix = os.path.join(project_dir, "game")
+        template = os.path.join(gui_template_path, "game")
+
+        # Most of this isn't actually used.
+        p = gui7.GuiParameters(
+            prefix,
+            template,
+            width,
+            height,
+            accent,
+            boring,
+            light,
+            _preferences.language,
+            False,
+            True,
+            True,
+            project_name,
+            )
+
+        interface.processing(_("Creating the new project..."))
+
+        with interface.error_handling(_("creating a new project")):
+            gui7.generate_minimal(p)
+
+        # Activate the project.
+        with interface.error_handling(_("activating the new project")):
+            project.manager.scan()
+            project.Select(project.manager.get(project_name))()
+
+    call update_renpy_strings_common
+
+    python hide:
+        if gui.project_system_font:
+            with open(os.path.join(project.current.gamedir, "tl/None/common.rpym"), "ab") as f:
+                f.write("define gui.system_font = {!r}\r\n".format(gui.project_system_font).encode("utf-8"))
 
     jump front_page

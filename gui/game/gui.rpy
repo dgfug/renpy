@@ -11,6 +11,8 @@ init offset = -2
 init python:
     gui.init(1280, 720)
 
+## Enable checks for invalid or unstable properties in screens or transforms
+define config.check_conflicting_properties = True
 
 
 ################################################################################
@@ -326,7 +328,7 @@ define gui.vbar_borders = Borders(gui.scale(4), gui.scale(4), gui.scale(4), gui.
 define gui.vscrollbar_borders = Borders(gui.scale(4), gui.scale(4), gui.scale(4), gui.scale(4))
 define gui.vslider_borders = Borders(gui.scale(4), gui.scale(4), gui.scale(4), gui.scale(4))
 
-## What to do with unscrollable scrollbars in the gui. "hide" hides them, while
+## What to do with unscrollable scrollbars in the game menu. "hide" hides them, while
 ## None shows them.
 define gui.unscrollable = "hide"
 
@@ -341,6 +343,9 @@ define config.history_length = 250
 ## The height of a history screen entry, or None to make the height variable
 ## at the cost of performance.
 define gui.history_height = gui.scale(140)
+
+## Additional space to add between history screen entries.
+define gui.history_spacing = 0
 
 ## The position, width, and alignment of the label giving the name of the
 ## speaking character.
@@ -399,6 +404,7 @@ define gui.nvl_thought_xalign = 0.0
 define gui.nvl_button_xpos = gui.scale(450)
 define gui.nvl_button_xalign = 0.0
 
+
 ## Localization ################################################################
 
 ## This controls where a line break is permitted. The default is suitable for
@@ -416,13 +422,15 @@ init python:
 
     ## This increases the size of the quick buttons to make them easier to
     ## touch on tablets and phones.
-    if renpy.variant("touch"):
+    @gui.variant
+    def touch():
 
         gui.quick_button_borders = Borders(gui.scale(40), gui.scale(14), gui.scale(40), gui.scale(0))
 
     ## This changes the size and spacing of various GUI elements to ensure
     ## they are easily visible on phones.
-    if renpy.variant("small"):
+    @gui.variant
+    def small():
 
         ## Font sizes.
         gui.text_size = gui.scale(30)
@@ -471,6 +479,3 @@ init python:
 
         gui.nvl_button_width = gui.scale(1240)
         gui.nvl_button_xpos = gui.scale(20)
-
-
-

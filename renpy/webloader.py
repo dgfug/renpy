@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -45,7 +45,7 @@ to_unlink = { }
 queue_lock = threading.RLock()
 
 if renpy.emscripten:
-    import emscripten, json
+    import emscripten, json # type: ignore
 
     # Space-efficient, copy-less download share
     # Note: could be reimplement with pyodide's jsproxy, but let's keep things small
@@ -87,7 +87,7 @@ if renpy.emscripten:
 };
 """)
 
-    class XMLHttpRequest(object):
+    class XMLHttpRequest(object): # type: ignore
         def __init__(self, filename):
             url = 'game/' + filename
             self.id = emscripten.run_script_int(
@@ -112,26 +112,22 @@ elif os.environ.get('RENPY_SIMULATE_DOWNLOAD', False):
     # simulate
     # Ex: rm -rf odrdtest-simu && unzip -d odrdtest-simu/ odrdtest-1.0-dists/odrdtest-1.0-web/game.zip && RENPY_SIMULATE_DOWNLOAD=1 ./renpy.sh odrdtest-simu
 
-    import urllib2, urllib, httplib, os, threading, time, random
-
+    import urllib, urllib.parse, random, requests
     class XMLHttpRequest(object):
         def __init__(self, filename):
             self.done = False
             self.error = None
-            url = 'http://127.0.0.1:8042/game/' + urllib.quote(filename)
-            req = urllib2.Request(url)
+            url = 'http://127.0.0.1:8042/game/' + urllib.parse.quote(filename)
             def thread_main():
                 try:
                     time.sleep(random.random() * 0.5)
-                    r = urllib2.urlopen(req)
+                    r = requests.get(url)
                     fullpath = os.path.join(renpy.config.gamedir, filename)
                     with queue_lock:
                         with open(fullpath, 'wb') as f:
-                            f.write(r.read())
-                except urllib2.URLError as e:
-                    self.error = str(e.reason)
-                except httplib.HTTPException as e:
-                    self.error = 'HTTPException'
+                            f.write(r.content)
+                except requests.RequestException as e:
+                    self.error = repr(e)
                 except Exception as e:
                     self.error = 'Error: ' + str(e)
                 self.done = True
@@ -181,6 +177,7 @@ def enqueue(relpath, rtype, data):
     global queue
 
     with queue_lock:
+        voice_count = 0
         for rr in queue:
             # de-dup same .data/image_filename
             # don't de-dup same .relpath (different .data == different cache entry)
@@ -193,16 +190,20 @@ def enqueue(relpath, rtype, data):
             elif rr.rtype == rtype == 'voice':
                 if rr.relpath == relpath:
                     return
-                if len([True for rr in queue if rr.type == 'voice']) > renpy.config.predict_statements:
-                    # don't stack skipped dialogs
-                    return
+                voice_count += 1
+
+        if voice_count > renpy.config.predict_statements:
+            # don't stack skipped dialogs
+            return
+
         queue.append(ReloadRequest(relpath, rtype, data))
 
 
 def process_downloaded_resources():
-    global queue, to_unlink
+    global queue
 
-    reload_needed = False
+    if not queue:
+        return
 
     with queue_lock:
 
@@ -230,7 +231,6 @@ def process_downloaded_resources():
                     # mark for deletion
                     fullpath = os.path.join(renpy.config.gamedir,rr.relpath)
                     to_unlink[fullpath] = time.time()
-                    reload_needed = True
 
                 elif rr.rtype == 'music':
                     # - just wait for the 0.5s placeholder to finish,
@@ -243,24 +243,19 @@ def process_downloaded_resources():
                     fullpath = os.path.join(renpy.config.gamedir,rr.relpath)
                     to_unlink[fullpath] = time.time() + 120
 
-                # TODO: videos (when web support is implemented)
-
         # make sure the queue doesn't contain a corrupt file so we
         # don't rethrow an exception while in Ren'Py's error handler
         finally:
             queue = postponed + todo
 
-    if reload_needed:
-        # Refresh the screen and re-load images flushed from cache
-        # Note: done at next Ren'Py interaction (prediction reset)
-        renpy.display.render.free_memory()
-
     # Free files from memory once they are loaded
     # Due to search-path dups and derived images (including image-based animations)
     # files can't be removed right after actual load
     ttl = 60  # remove after 1mn - if your animation is longer than that, use a video
-    for fullpath in to_unlink.keys():
-        delta = time.time() - to_unlink[fullpath]
+    current_time = time.time()
+    for fullpath, value in tuple(to_unlink.items()):
+        # Get the number of seconds that passed since the item was pushed into the to_unlink
+        delta = current_time - value
         if delta > ttl:
             os.unlink(fullpath)
             del to_unlink[fullpath]

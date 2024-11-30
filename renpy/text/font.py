@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -20,20 +20,31 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 import pygame_sdl2 as pygame
 
 try:
     import xml.etree.ElementTree as etree
-except:
+except Exception:
     pass
 
-import renpy.display
+import renpy
+import os
+
 import renpy.text.ftfont as ftfont
+ftfont.init()
+
+try:
+    import renpy.text.hbfont as hbfont
+    hbfont.init()
+except ImportError:
+    hbfont = None
+
 import renpy.text.textsupport as textsupport
 
-ftfont.init() # @UndefinedVariable
 
 WHITE = (255, 255, 255, 255)
 BLACK = (0, 0, 0, 255)
@@ -65,15 +76,28 @@ class ImageFont(object):
 
     # Font global:
     # height - The line height, the height of each character cell.
+    height = 0
     # kerns - The kern between each pair of characters.
+    kerns = { } # type: dict[str, float]
+
     # default_kern - The default kern.
+    default_kern = 0.0
+
     # baseline - The y offset of the font baseline.
+    baseline = 0
 
     # Per-character:
     # width - The width of each character.
+    width = {} # type: dict[str, float]
+
     # advance - The advance of each character.
+    advance = {} # type: dict[str, float]
+
     # offsets - The x and y offsets of each character.
+    offsets = { } # type: dict[str, tuple[int, int]]
+
     # chars - A map from a character to the surface containing that character.
+    chars = { } # type: dict[str, pygame.surface.Surface]
 
     def glyphs(self, s):
 
@@ -261,7 +285,7 @@ class MudgeFont(ImageFont):
         surf = renpy.display.im.Image(self.filename).load(unscaled=True)
 
         # Parse the xml file.
-        with renpy.loader.load(self.xml) as f:
+        with renpy.loader.load(self.xml, directory="fonts") as f:
             tree = etree.fromstring(f.read())
 
         height = 0
@@ -361,8 +385,10 @@ class BMFont(ImageFont):
 
         pages = { }
 
-        with renpy.loader.load(self.filename) as f:
+        with renpy.loader.load(self.filename, directory="fonts") as f:
             for l in f:
+
+                l = l.decode("utf-8")
 
                 kind, args = parse_bmfont_line(l)
 
@@ -414,7 +440,7 @@ class ScaledImageFont(ImageFont):
     def __init__(self, parent, factor):
 
         def scale(n):
-            return int(round(n * factor))
+            return round(n * factor)
 
         self.height = scale(parent.height)
         self.baseline = scale(parent.baseline)
@@ -431,7 +457,11 @@ class ScaledImageFont(ImageFont):
             w, h = v.get_size()
             nw = scale(w)
             nh = scale(h)
-            self.chars[k] = renpy.display.scale.smoothscale(v, (nw, nh))
+
+            if renpy.config.nearest_neighbor:
+                self.chars[k] = renpy.display.pgrender.transform_scale(v, (nw, nh))
+            else:
+                self.chars[k] = renpy.display.scale.smoothscale(v, (nw, nh))
 
 
 def register_sfont(name=None, size=None, bold=False, italics=False, underline=False,
@@ -484,12 +514,14 @@ def register_sfont(name=None, size=None, bold=False, italics=False, underline=Fa
     `charset`
         The character set of the font. A string containing characters in
         the order in which they are found in the image. The default character
-        set for a SFont is::
+        set for a SFont is
 
-            ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ?
-            @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _
-            ` a b c d e f g h i j k l m n o p q r s t u v w x y z { | } ~
-    """
+    .. code-block:: none
+
+        ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ?
+        @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \\ ] ^ _
+        ` a b c d e f g h i j k l m n o p q r s t u v w x y z { | } ~
+    """ # a code-block and not a ::, because it's not proper renpy syntax
 
     if name is None or size is None or filename is None:
         raise Exception("When registering an SFont, the font name, font size, and filename are required.")
@@ -594,14 +626,16 @@ def register_bmfont(name=None, size=None, bold=False, italics=False, underline=F
     image_fonts[(name, size, bold, italics)] = bmf
 
 
-# A map from face name to ftfont.FTFace
+# A map from face name, shaper to ftfont.FTFace or hbfont.HBFace.
 face_cache = { }
 
 
-def load_face(fn):
+def load_face(fn, shaper):
 
-    if fn in face_cache:
-        return face_cache[fn]
+    key = (fn, shaper)
+
+    if key in face_cache:
+        return face_cache[key]
 
     orig_fn = fn
 
@@ -615,7 +649,7 @@ def load_face(fn):
     font_file = None
 
     try:
-        font_file = renpy.loader.load(fn)
+        font_file = renpy.loader.load(fn, directory="fonts")
     except IOError:
 
         if (not renpy.config.developer) or renpy.config.allow_sysfonts:
@@ -625,7 +659,7 @@ def load_face(fn):
 
             pygame.sysfont.initsysfonts()
 
-            for v in pygame.sysfont.Sysfonts.values():
+            for v in pygame.sysfont.Sysfonts.values(): # type: ignore
                 if v is not None:
                     for _flags, ffn in v.items():
                         for i in fonts:
@@ -642,9 +676,13 @@ def load_face(fn):
     if font_file is None:
         raise Exception("Could not find font {0!r}.".format(orig_fn))
 
-    rv = ftfont.FTFace(font_file, index, orig_fn) # @UndefinedVariable
+    if shaper == "harfbuzz":
+        rv = hbfont.HBFace(font_file, index, orig_fn) # @UndefinedVariable
+    else:
+        rv = ftfont.FTFace(font_file, index, orig_fn) # @UndefinedVariable
 
-    face_cache[orig_fn] = rv
+
+    face_cache[key] = rv
 
     return rv
 
@@ -662,7 +700,10 @@ font_cache = { }
 last_scale = 1.0
 
 
-def get_font(fn, size, bold, italics, outline, antialias, vertical, hinting, scale):
+def get_font(fn, size, bold, italics, outline, antialias, vertical, hinting, scale, shaper, instance, axis):
+
+    if hbfont is None:
+        shaper = "freetype"
 
     # If the scale changed, invalidate caches of scaled fonts.
     global last_scale
@@ -692,15 +733,25 @@ def get_font(fn, size, bold, italics, outline, antialias, vertical, hinting, sca
         return rv
 
     # Check for a cached TTF.
-    key = (fn, size, bold, italics, outline, antialias, vertical, hinting, scale)
+    key = (fn, size, bold, italics, outline, antialias, vertical, hinting, scale, shaper, instance, None if axis is None else tuple(sorted(axis.items())))
 
     rv = font_cache.get(key, None)
     if rv is not None:
         return rv
 
+    if hinting is True:
+        hinting = renpy.config.font_hinting.get(fn, True)
+
+    if hinting is True:
+        hinting = renpy.config.font_hinting.get(None, "auto")
+
     # Load a TTF.
-    face = load_face(fn)
-    rv = ftfont.FTFont(face, int(size * scale), bold, italics, outline, antialias, vertical, hinting) # @UndefinedVariable
+    face = load_face(fn, shaper)
+
+    if shaper == "harfbuzz":
+        rv = hbfont.HBFont(face, int(size * scale), bold, italics, outline, antialias, vertical, hinting, instance, axis) # @UndefinedVariable
+    else:
+        rv = ftfont.FTFont(face, int(size * scale), bold, italics, outline, antialias, vertical, hinting) # @UndefinedVariable
 
     font_cache[key] = rv
 
@@ -721,7 +772,48 @@ def load_fonts():
         i.load()
 
     for i in renpy.config.preload_fonts:
-        load_face(i)
+        load_face(i, "harfbuzz")
+
+
+def variable_font_info(font):
+    """
+    :doc: variable_fonts
+
+    Returns information about a variable font, or None if the font is not
+    variable.
+
+    `font`
+        The filename containing the font.
+
+    The return value is an object with the following fields:
+
+    `instance`
+        A dictionary where the keys are the names of the named instances
+        of the font. (For example, 'light', 'regular', 'bold', and 'heavy'.)
+        The values can be ignored.
+
+    `axis`
+        A dictionary that maps the names of the axes of the font to objects
+        with the following fields:
+
+        `minimum`
+            The minimum value of the axis.
+        `default`
+            The default value of the axis.
+        `maximum`
+            The maximum value of the axis.
+
+    The object returned by this function and the data inside it should not
+    be changed.
+
+    This function may only be called after the Ren'Py display has initialized,
+    and is intended to be called from the console, where it will print in
+    a human-readable form.
+    """
+
+    face = load_face(font, "harfbuzz")
+
+    return face.variations
 
 
 class FontGroup(object):
@@ -733,7 +825,7 @@ class FontGroup(object):
     """
 
     # For compatibility with older instances.
-    char_map = dict()
+    char_map = {}
 
     def __init__(self):
 
@@ -778,6 +870,9 @@ class FontGroup(object):
         This returns the FontGroup, so that multiple calls to .add() can be
         chained together.
         """
+
+        if font in renpy.config.font_name_map:
+            raise Exception("FontGroup do not accept font aliases.")
 
         if start is None:
 
@@ -856,19 +951,21 @@ class FontGroup(object):
 
     def segment(self, s):
         """
-        Segments `s` into fonts. Generates (font, string) tuples.
+        Segments the `s` string into substrings, each having only one font.
+        Generates (font, string) tuples.
         """
 
         mark = 0
         pos = 0
 
+        font = None
         old_font = None
 
         if self.char_map:
             s = [ ord(i) for i in s ]
             s = "".join(chr(self.char_map.get(i, i)) for i in s)
 
-        for i, c in enumerate(s):
+        for c in s:
 
             n = ord(c)
 
@@ -889,4 +986,5 @@ class FontGroup(object):
 
             pos += 1
 
-        yield font, s[mark:]
+        if font is not None:
+            yield font, s[mark:]

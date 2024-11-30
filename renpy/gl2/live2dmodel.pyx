@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -76,6 +76,12 @@ cdef extern from "Live2DCubismCore.h":
         float X
         float Y
 
+    ctypedef struct csmVector4:
+        float X
+        float Y
+        float Z
+        float W
+
     ctypedef void (__stdcall *csmLogFunction)(const char* message)
 
 include "live2dcsm.pxi"
@@ -119,6 +125,7 @@ class Parameter(object):
         self.minimum = minimum
         self.maximum = maximum
         self.default = default
+        self.remaining = 1.0
 
 class Part(object):
 
@@ -126,6 +133,7 @@ class Part(object):
         self.index = index
         self.name = name
         self.default_opacity = default_opacity
+        self.remaining = 1.0
 
 cdef class Live2DModel:
     """
@@ -171,6 +179,8 @@ cdef class Live2DModel:
     cdef const csmVector2 **drawable_vertex_uvs
     cdef const int *drawable_index_counts
     cdef const unsigned short **drawable_indices
+    cdef const csmVector4 *drawable_multiply_colors
+    cdef const csmVector4 *drawable_screen_colors
 
     cdef public dict parameters
     cdef public dict parts
@@ -180,6 +190,13 @@ cdef class Live2DModel:
 
     cdef list meshes
 
+    _types = """
+        parameters : dict[str, Parameter]
+        parts : dict[str, Part]
+        parameter_groups : dict
+        opacity_groups : dict
+        """
+
     def __init__(self, fn):
         """
         Loads the Live2D model.
@@ -187,7 +204,7 @@ cdef class Live2DModel:
 
         cdef int i
 
-        with renpy.loader.load(fn) as f:
+        with renpy.loader.load(fn, directory="images") as f:
             data = f.read()
 
         # Load the MOC.
@@ -239,11 +256,13 @@ cdef class Live2DModel:
         self.drawable_vertex_uvs = csmGetDrawableVertexUvs(self.model)
         self.drawable_index_counts = csmGetDrawableIndexCounts(self.model)
         self.drawable_indices = csmGetDrawableIndices(self.model)
+        self.drawable_multiply_colors = csmGetDrawableMultiplyColors(self.model)
+        self.drawable_screen_colors = csmGetDrawableScreenColors(self.model)
 
         self.parameters = { }
 
         for 0 <= i < self.parameter_count:
-            name = self.parameter_ids[i]
+            name = self.parameter_ids[i].decode("utf-8")
             self.parameters[name] = Parameter(
                 i, name,
                 self.parameter_minimum_values[i],
@@ -254,7 +273,7 @@ cdef class Live2DModel:
         self.parts = { }
 
         for 0 <= i < self.part_count:
-            name = self.part_ids[i]
+            name = self.part_ids[i].decode("utf-8")
             self.parts[name] = Part(i, name, self.part_opacities[i])
 
         self.opacity_groups = { }
@@ -263,11 +282,17 @@ cdef class Live2DModel:
         csmUpdateModel(self.model)
 
     def reset_parameters(self):
+        """
+        Resets the parameters, and resets the remaining weight to 1.0.
+        """
+
         for i in self.parameters.values():
-            self.parameter_values[i.index] = i.default
+            self.parameter_values[i.index] = 0.0
+            i.remaining = 1.0
 
         for i in self.parts.values():
-            self.part_opacities[i.index] = i.default_opacity
+            self.part_opacities[i.index] = 0.0
+            i.remaining = 1.0
 
 
     def set_part_opacity(self, name, value):
@@ -278,7 +303,8 @@ cdef class Live2DModel:
                 self.set_part_opacity(i, value)
             return
 
-        self.part_opacities[part.index] = value
+        self.part_opacities[part.index] += value * part.remaining
+        part.remaining = 0.0
 
     def set_parameter(self, name, value, weight=1.0):
         parameter = self.parameters.get(name, None)
@@ -288,8 +314,20 @@ cdef class Live2DModel:
                 self.set_parameter(i, value, weight=weight)
             return
 
+        weight = min(weight, parameter.remaining)
+
         old = self.parameter_values[parameter.index]
-        self.parameter_values[parameter.index] = old + weight * (value - old)
+        self.parameter_values[parameter.index] += weight * value
+        parameter.remaining -= weight
+
+    def finish_parameters(self):
+        for i in self.parameters.values():
+            self.parameter_values[i.index] += i.default * i.remaining
+            i.remaining = 0.0
+
+        for i in self.parts.values():
+            self.part_opacities[i.index] += i.default_opacity * i.remaining
+            i.remaining = 0.0
 
     def blend_parameter(self, name, blend, value, weight=1.0):
 
@@ -311,6 +349,27 @@ cdef class Live2DModel:
 
         self.parameter_values[parameter.index] = old + weight * (value - old)
 
+    def blend_opacity(self, name, blend, value, weight=1.0):
+
+        part = self.parts.get(name, None)
+
+        if part is None:
+            for i in self.opacity_groups.get(name, [ ]):
+                self.blend_opacity(i, blend, value, weight=weight)
+            return
+
+        old = self.part_opacities[part.index]
+
+        if blend == "Multiply":
+            value = old * value
+        elif blend == "Add":
+            value = old + value
+        elif blend == "Overwrite":
+            value = value
+
+        self.part_opacities[part.index] = old + weight * (value - old)
+
+
     def get_size(self):
         return (self.pixel_size.X, self.pixel_size.Y)
 
@@ -323,16 +382,13 @@ cdef class Live2DModel:
         cdef Render m
         cdef Render rv
 
-        shaders = ("renpy.texture", "live2d.flip_texture")
+        shaders = ("renpy.texture", "live2d.flip_texture", "live2d.colors")
         mask_shaders = ("live2d.mask", "live2d.flip_texture")
         inverted_mask_shaders = ("live2d.inverted_mask", "live2d.flip_texture")
 
         csmUpdateModel(self.model)
 
         # Render the model.
-
-#         w = self.pixel_size.X
-#         h = self.pixel_size.Y
         w = int(zoom * self.pixel_size.X)
         h = int(zoom * self.pixel_size.Y)
 
@@ -351,17 +407,24 @@ cdef class Live2DModel:
             0, 0, 1, 0,
             0, 0, 0, 1, ])
 
-        forward = Matrix([
-            invppu, 0, 0, invppu,
-            0, -invppu, 0, invppu,
-            0, 0, 1, 0,
-            0, 0, 0, 1, ])
+        forward = reverse.inverse()
 
         rv = Render(w, h)
+
         renders = [ ]
         raw_renders = [ ]
+        mask_renders = [ ]
+
+        cdef csmVector4 multiply
+        cdef csmVector4 screen
 
         for 0 <= i < self.drawable_count:
+
+            multiply = self.drawable_multiply_colors[i]
+            screen = self.drawable_screen_colors[i]
+
+            multiply_tuple = (multiply.X, multiply.Y, multiply.Z, multiply.W)
+            screen_tuple = (screen.X, screen.Y, screen.Z, screen.W)
 
             mesh = Mesh2(TEXTURE_LAYOUT, self.drawable_vertex_counts[i], self.drawable_index_counts[i] // 3)
 
@@ -370,16 +433,41 @@ cdef class Live2DModel:
             memcpy(mesh.attribute, self.drawable_vertex_uvs[i], sizeof(float) * mesh.points * 2)
 
             mesh.triangles = self.drawable_index_counts[i] // 3
-            memcpy(mesh.triangle, self.drawable_indices[i],  sizeof(unsigned short) * mesh.triangles * 3)
+
+            for 0 <= j < mesh.triangles * 3:
+                mesh.triangle[j] = self.drawable_indices[i][j]
+
+            tex = textures[self.drawable_texture_indices[i]]
+
+            # Create a render that can be used as a mask.
+            mr = Render(ppu * 2, ppu * 2)
+            mr.reverse = reverse
+            mr.forward = forward
+            mr.mesh = mesh
+
+            mr.add_uniform("u_multiply", multiply_tuple)
+            mr.add_uniform("u_screen", screen_tuple)
+
+            for s in shaders:
+                mr.add_shader(s)
+
+            mr.blit(tex, (0, 0))
+
+            mask_renders.append(mr)
+
+            # Create the render that is actually drawn.
             r = Render(ppu * 2, ppu * 2)
             r.reverse = reverse
             r.forward = forward
             r.mesh = mesh
 
+            r.add_uniform("u_multiply", multiply_tuple)
+            r.add_uniform("u_screen", screen_tuple)
+
             for s in shaders:
                 r.add_shader(s)
 
-            r.blit(textures[self.drawable_texture_indices[i]], (0, 0))
+            r.blit(tex, (0, 0))
 
             raw_renders.append(r)
 
@@ -394,21 +482,18 @@ cdef class Live2DModel:
 
                 if alpha != 1.0:
 
-                    ar = renpy.display.render.Render(r.width, r.height)
-                    ar.blit(r, (0, 0))
-
-                    ar.add_shader("renpy.alpha")
-                    ar.add_uniform("u_renpy_alpha", alpha)
-                    ar.add_uniform("u_renpy_over", 1.0)
-
-                    r = ar
+                    r.add_shader("renpy.alpha")
+                    r.add_uniform("u_renpy_alpha", alpha)
+                    r.add_uniform("u_renpy_over", 1.0)
 
                 renders.append((self.drawable_render_orders[i], r))
-
 
         multi_masks = { }
 
         for 0 <= i < self.drawable_count:
+
+            multiply = self.drawable_multiply_colors[i]
+            screen = self.drawable_screen_colors[i]
 
             if self.drawable_mask_counts[i] == 0:
                 continue
@@ -416,7 +501,7 @@ cdef class Live2DModel:
             r = raw_renders[i]
 
             if self.drawable_mask_counts[i] == 1:
-                m = raw_renders[self.drawable_masks[i][0]]
+                m = mask_renders[self.drawable_masks[i][0]]
             else:
 
                 key = [ ]
@@ -432,7 +517,7 @@ cdef class Live2DModel:
                     m = renpy.display.render.Render(ppu * 2, ppu * 2)
 
                     for j in key:
-                        m.blit(raw_renders[j], (0, 0))
+                        m.blit(mask_renders[j], (0, 0))
 
                     multi_masks[key] = m
 

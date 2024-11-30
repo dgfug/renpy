@@ -1,5 +1,7 @@
-﻿
-translate vietnamese strings:
+﻿translate vietnamese strings:
+    # game/new_project.rpy:77
+    old "{#language name and font}"
+    new "{font=fonts/Roboto-Light.ttf}Tiếng Việt{/font}"
 
     # about.rpy:39
     old "[version!q]"
@@ -355,11 +357,11 @@ translate vietnamese strings:
 
     # editor.rpy:150
     old "{b}Recommended.{/b} A beta editor with an easy to use interface and features that aid in development, such as spell-checking. Editra currently lacks the IME support required for Chinese, Japanese, and Korean text input."
-    new "{b}Khuyến khích{/ b} Một trình biên tập có giao diện thân thiện và chức năng hỗ trợ phát triển, chẳng hạn như kiểm tra lỗi chính tả. Editra hiện đang thiếu sự hỗ trợ IME cần thiết để nhập văn bản Trung Quốc, Nhật Bản, và Hàn Quốc."
+    new "{b}Khuyến khích{/b} Một trình biên tập có giao diện thân thiện và chức năng hỗ trợ phát triển, chẳng hạn như kiểm tra lỗi chính tả. Editra hiện đang thiếu sự hỗ trợ IME cần thiết để nhập văn bản Trung Quốc, Nhật Bản, và Hàn Quốc."
 
     # editor.rpy:151
     old "{b}Recommended.{/b} A beta editor with an easy to use interface and features that aid in development, such as spell-checking. Editra currently lacks the IME support required for Chinese, Japanese, and Korean text input. On Linux, Editra requires wxPython."
-    new "{b}Khuyến khích{/ b} Một trình biên tập có giao diện thân thiện và chức năng hỗ trợ phát triển, chẳng hạn như kiểm tra lỗi chính tả. Editra hiện đang thiếu sự hỗ trợ IME cần thiết để nhập văn bản Trung Quốc, Nhật Bản, và Hàn Quốc. Với Linux Editra cần thêm wxPython."
+    new "{b}Khuyến khích{/b} Một trình biên tập có giao diện thân thiện và chức năng hỗ trợ phát triển, chẳng hạn như kiểm tra lỗi chính tả. Editra hiện đang thiếu sự hỗ trợ IME cần thiết để nhập văn bản Trung Quốc, Nhật Bản, và Hàn Quốc. Với Linux Editra cần thêm wxPython."
 
     # editor.rpy:167
     old "This may have occured because wxPython is not installed on this system."
@@ -562,8 +564,8 @@ translate vietnamese strings:
     new "[project_name!q] đã tồn tại. Hãy chọn tên dự án khác."
 
     # gui7.rpy:341
-    old "What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of 1280x720 is a reasonable compromise."
-    new "What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of 1280x720 is a reasonable compromise."
+    old "What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of [default_size[0]]x[default_size[1]] is a reasonable compromise."
+    new "What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of [default_size[0]]x[default_size[1]] is a reasonable compromise."
 
     # gui7.rpy:389
     old "Creating the new project..."
@@ -1184,4 +1186,3 @@ translate vietnamese strings:
     # updater.rpy:195
     old "Proceed"
     new "Tiếp tục"
-

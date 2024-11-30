@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -19,17 +19,19 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
-
-import renpy.display
-from renpy.display.render import render, Render, Matrix2D
-
 # This file contains displayables that are image-like, because they take
 # up a rectangular area of the screen, and do not respond to input.
 
+from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
 
-class Solid(renpy.display.core.Displayable):
+
+import renpy
+from renpy.display.render import render, Render
+from renpy.display.matrix import Matrix2D
+
+
+class Solid(renpy.display.displayable.Displayable):
     """
     :doc: disp_imagelike
 
@@ -73,6 +75,12 @@ class Solid(renpy.display.core.Displayable):
 
         rv = Render(width, height)
 
+        if width and height:
+            minw, minh = renpy.display.draw.draw_to_virt.transform(1, 1)
+
+            width = max(width, minw)
+            height = max(height, minh)
+
         if color is None or width <= 0 or height <= 0:
             return rv
 
@@ -100,7 +108,7 @@ class Borders(object):
 
     `left`, `top`, `right`, `bottom`
         These provide the size of the insets used by a frame, and are added
-        to the padding on each side. They should zero or a positive integer.
+        to the padding on each side. They should be zero or a positive integer.
 
     `pad_left`, `pad_top`, `pad_right`, `pad_bottom`
         These are added to the padding on each side, and may be positive or
@@ -137,10 +145,10 @@ class Borders(object):
             )
 
 
-class Frame(renpy.display.core.Displayable):
+class Frame(renpy.display.displayable.Displayable):
     """
     :doc: disp_imagelike
-    :args: (image, left=0, top=0, right=None, bottom=None, tile=False, **properties)
+    :args: (image, left=0, top=0, right=None, bottom=None, *, tile=False, **properties)
     :name: Frame
 
     A displayable that resizes an image to fill the available area,
@@ -189,10 +197,10 @@ class Frame(renpy.display.core.Displayable):
 
     def after_upgrade(self, version):
         if version < 2:
-            self.left = self.xborder
-            self.right = self.xborder
-            self.top = self.yborder
-            self.bottom = self.yborder
+            self.left = self.xborder # type: ignore
+            self.right = self.xborder # type: ignore
+            self.top = self.yborder # type: ignore
+            self.bottom = self.yborder # type: ignore
 
     def __init__(self, image, left=None, top=None, right=None, bottom=None,
                  xborder=0, yborder=0, bilinear=True, tile=False,
@@ -271,15 +279,29 @@ class Frame(renpy.display.core.Displayable):
         width = max(self.style.xminimum, width)
         height = max(self.style.yminimum, height)
 
+
+        # The size of the final displayable.
+        if self.tile:
+
+            dw = int(width)
+            dh = int(height)
+        else:
+            dw = width
+            dh = height
+
+
+        if width and height:
+            minw, minh = renpy.display.draw.draw_to_virt.transform(1, 1)
+
+            width = max(width, minw)
+            height = max(height, minh)
+
         image = self.style.child or self.image
         crend = render(image, width, height, st, at)
 
         sw, sh = crend.get_size()
         sw = int(sw)
         sh = int(sh)
-
-        dw = int(width)
-        dh = int(height)
 
         bw = self.left + self.right
         bh = self.top + self.bottom
@@ -403,6 +425,7 @@ class Frame(renpy.display.core.Displayable):
             return
 
         rv = Render(dw, dh)
+        rv.add_property("pixel_perfect", False)
 
         self.draw_pattern(draw, left, top, right, bottom)
 
@@ -563,6 +586,10 @@ class Frame(renpy.display.core.Displayable):
         rv._duplicatable = image._duplicatable
         return rv
 
+    def _unique(self):
+        self.image._unique()
+        self._duplicatable = False
+
     def _in_current_store(self):
         image = self.image._in_current_store()
 
@@ -574,12 +601,12 @@ class Frame(renpy.display.core.Displayable):
         return rv
 
     def visit(self):
-        rv = [ ]
-        self.style._visit_frame(rv)
+        rv = [ self.image ]
+        self.style._visit_frame(rv.append)
         return rv
 
 
-class FileCurrentScreenshot(renpy.display.core.Displayable):
+class FileCurrentScreenshot(renpy.display.displayable.Displayable):
     """
     :doc: file_action_function
 

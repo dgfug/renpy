@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 
 import inspect
 import re
@@ -6,10 +6,15 @@ import collections
 import keyword
 import renpy.sl2
 import shutil
-import StringIO
+import io
 import os
+import textwrap
+import pprint
 
-import __builtin__
+try:
+    import builtins
+except ImportError:
+    import __builtin__ as builtins
 
 # Additional keywords in the Ren'Py script language.
 SCRIPT_KEYWORDS = """\
@@ -86,8 +91,8 @@ def sl2_keywords():
 
     rv = set()
 
-    for i in renpy.sl2.slparser.all_statements:
-        rv.add(i.name)
+    for i in sorted(renpy.sl2.slparser.statements):
+        rv.add(i)
 
     rv.remove("icon")
     rv.remove("iconbutton")
@@ -123,7 +128,7 @@ def sl2_regexps():
         names, style = k
 
         if len(prefixes) > 1:
-            part1 = "(?:" + "|".join(prefixes) + ")"
+            part1 = "(?:" + "|".join(sorted(prefixes)) + ")"
         else:
             part1 = tuple(prefixes)[0]
 
@@ -165,8 +170,8 @@ def expanded_sl2_properties():
     return rv
 
 
-def write_keywords():
-    f = open("source/keywords.py", "w")
+def write_keywords(srcdir='source'):
+    outf = os.path.join(srcdir, 'keywords.py')
 
     kwlist = set(keyword.kwlist)
     kwlist |= script_keywords()
@@ -180,18 +185,20 @@ def write_keywords():
 
     kwlist.sort()
 
-    f.write("keywords = %r\n" % kwlist)
-    f.write("keyword_regex = %r\n" % ("|".join(re.escape(i) for i in kwlist)))
+    with open(outf, "w") as f:
 
-    properties = [ i for i in expanded_sl2_properties() if i not in kwlist ]
+        keyword_regex = [ re.escape(i) for i in kwlist ]
 
-    f.write("properties = %r\n" % properties)
+        f.write("keywords = %s\n" % pprint.pformat(kwlist))
+        f.write("keyword_regex = %s\n" % pprint.pformat(keyword_regex))
+        f.write("keyword_regex = '|'.join(keyword_regex)\n")
 
-    f.write("property_regexes = %r\n" % sl2_regexps())
+        properties = [ i for i in expanded_sl2_properties() if i not in kwlist ]
 
-    f.close()
+        f.write("properties = %s\n" % pprint.pformat(properties))
+        f.write("property_regexes = %s\n" % pprint.pformat(sl2_regexps()))
 
-    shutil.copy("source/keywords.py", "../tutorial/game/keywords.py")
+    shutil.copy(outf, os.path.join(srcdir, "../../tutorial/game/keywords.py"))
 
 
 # A map from filename to a list of lines that are supposed to go into
@@ -204,10 +211,38 @@ documented = collections.defaultdict(list)
 # This keeps all objectsd we see alive, to prevent duplicates in documented.
 documented_list = [ ]
 
+def getdoc(o):
+    """
+    Returns the docstring for `o`, but unlike inspect.getdoc, does not get
+    values from base classes if absent (and it's faster too).
+    Will still get the inherited docstring for a non-overridden method in a
+    subclass (because the method object is the same as the base classe's).
+    """
 
-def scan(name, o, prefix=""):
+    doc = getattr(o, "__doc__", None)
 
-    doc_type = "function"
+    if not doc:
+        return None
+
+    return inspect.cleandoc(doc)
+
+# The docstring for object.__init__ - which we don't want to pass for one of our classes's
+objinidoc = getdoc(object.__init__)
+
+
+def scan(name, o, prefix="", inclass=False):
+
+    if inspect.isclass(o):
+        if issubclass(o, (renpy.store.Action,
+                          renpy.store.BarValue,
+                          renpy.store.InputValue)):
+            doc_type = "function"
+        else:
+            doc_type = "class"
+    elif inclass:
+        doc_type = "method"
+    else:
+        doc_type = "function"
 
     # The section it's going into.
     section = None
@@ -215,19 +250,25 @@ def scan(name, o, prefix=""):
     # The formatted arguments.
     args = None
 
-    # Get the function's docstring.
-    doc = inspect.getdoc(o)
-
-#     if doc is None:
-#         doc = getattr(o, "__doc__", None)
-#         if not isinstance(doc, basestring):
-#             doc = None
+    # Get the callable's docstring.
+    doc = getdoc(o)
 
     if not doc:
         return
 
     if doc[0] == ' ':
         print("Bad docstring for ", name, repr(doc))
+
+    # Cython-generated docstrings start with the function and arguments.
+    if re.match(r'[\w\.]+\(', doc):
+        orig = doc
+
+        sig, _, doc = doc.partition("\n\n")
+        doc = textwrap.dedent(doc)
+
+        if "(" in sig:
+            args = "(" + sig.partition("(")[2]
+
 
     # Break up the doc string, scan it for specials.
     lines = [ ]
@@ -267,22 +308,20 @@ def scan(name, o, prefix=""):
             if not init:
                 return
 
-            init_doc = inspect.getdoc(init)
+            init_doc = getdoc(init)
 
-            if init_doc and not init_doc.startswith("x.__init__("):
+            if init_doc and (init_doc != objinidoc):
                 lines.append("")
                 lines.extend(init_doc.split("\n"))
 
-            try:
-                args = inspect.getargspec(init)
-            except:
-                args = None
+            if init != object.__init__: # we don't want that signature either
+                try:
+                    args = inspect.signature(init)
+                except Exception:
+                    args = None
 
-        elif inspect.isfunction(o):
-            args = inspect.getargspec(o)
-
-        elif inspect.ismethod(o):
-            args = inspect.getargspec(o)
+        elif inspect.isfunction(o) or inspect.ismethod(o):
+            args = inspect.signature(o)
 
         else:
             print("Warning: %s has section but not args." % name)
@@ -291,9 +330,12 @@ def scan(name, o, prefix=""):
 
         # Format the arguments.
         if args is not None:
+            if args.parameters and next(iter(args.parameters)) == "self":
+                pars = iter(args.parameters.values())
+                next(pars)
+                args = args.replace(parameters=pars)
 
-            args = inspect.formatargspec(*args)
-            args = args.replace("(self, ", "(")
+            args = str(args)
         else:
             args = "()"
 
@@ -310,7 +352,7 @@ def scan(name, o, prefix=""):
     if inspect.isclass(o):
         if (name not in [ "Matrix", "OffsetMatrix", "RotateMatrix", "ScaleMatrix" ]):
             for i in dir(o):
-                scan(i, getattr(o, i), prefix + "    ")
+                scan(i, getattr(o, i), prefix + "    ", inclass=True)
 
     if name == "identity":
         raise Exception("identity")
@@ -328,38 +370,37 @@ def scan_section(name, o):
         scan(name + n, getattr(o, n))
 
 
-def write_line_buffer():
+def write_line_buffer(incdir='source/inc'):
 
-    for k, v in line_buffer.iteritems():
+    for k, v in line_buffer.items():
 
-        # f = file("source/inc/" + k, "w")
+        f = io.StringIO()
 
-        f = StringIO.StringIO()
-
-        print(".. Automatically generated file - do not modify.", file=f)
-        print(file=f)
+        print(u".. Automatically generated file - do not modify.", file=f)
+        print(u"", file=f)
 
         for l in v:
             print(l, file=f)
 
         s = f.getvalue()
 
-        if os.path.exists("source/inc/" + k):
-            with open("source/inc/" + k) as f:
+        fname = os.path.join(incdir, k)
+        if os.path.exists(fname):
+            with open(fname) as f:
                 if f.read() == s:
                     print("Retaining", k)
                     continue
 
         print("Generating", k)
 
-        with open("source/inc/" + k, "w") as f:
+        with open(fname, "w") as f:
             f.write(s)
 
 
 name_kind = collections.defaultdict(str)
 
 
-def scan_docs():
+def scan_docs(srcdir='source', incdir='source/inc'):
     """
     Scans the documentation for functions, classes, and variables.
     """
@@ -375,12 +416,12 @@ def scan_docs():
 
             name_kind[m.group(2)] = m.group(1)
 
-    for i in os.listdir("source"):
+    for i in os.listdir(srcdir):
         if i.endswith(".rst"):
-            scan_file(os.path.join("source", i))
+            scan_file(os.path.join(srcdir, i))
 
-    for i in os.listdir("source/inc"):
-        scan_file(os.path.join("source", "inc", i))
+    for i in os.listdir(incdir):
+        scan_file(os.path.join(incdir, i))
 
 
 def format_name(name):
@@ -407,13 +448,13 @@ def write_reserved(module, dest, ignore_builtins):
             if i.startswith("_"):
                 continue
 
-            if ignore_builtins and hasattr(__builtin__, i):
+            if ignore_builtins and hasattr(builtins, i):
                 continue
 
             f.write("* " + format_name(i) + "\n")
 
 
-def write_pure_const():
+def write_pure_const(incdir='source/inc'):
 
     def write_set(f, s):
         l = list(s)
@@ -425,16 +466,16 @@ def write_pure_const():
     pure = renpy.pyanalysis.pure_functions # @UndefinedVariable
     constants = renpy.pyanalysis.constants - pure # @UndefinedVariable
 
-    with open("source/inc/pure_vars", "w") as f:
+    with open(os.path.join(incdir, "pure_vars"), "w") as f:
         write_set(f, pure)
 
-    with open("source/inc/const_vars", "w") as f:
+    with open(os.path.join(incdir, "const_vars"), "w") as f:
         write_set(f, constants)
 
 
-def write_easings(ns):
+def write_easings(ns, incdir='source/inc'):
 
-    with open("source/inc/easings", "w") as f:
+    with open(os.path.join(incdir, "easings"), "w") as f:
         f.write(".. csv-table::\n")
         f.write('    :header: "Ren\'Py Name", "easings.net Name"\n')
         f.write('\n')
@@ -449,22 +490,22 @@ def write_easings(ns):
             f.write('    "{}", "{}"\n'.format(name, stdname))
 
 
-def tq_script(name):
+def tq_script(name, srcdir='source'):
 
-    with open("../the_question/game/" + name, "r") as f:
+    with open(os.path.join(srcdir, "../../the_question/game", name), "r") as f:
         lines = f.readlines()
         lines = [ ("    " + i).rstrip() for i in lines ]
         return "\n".join(lines)
 
 
-def write_tq():
-    script = tq_script("script.rpy")
-    options = tq_script("options.rpy")
+def write_tq(srcdir='source'):
+    script = tq_script("script.rpy", srcdir=srcdir)
+    options = tq_script("options.rpy", srcdir=srcdir)
 
-    with open("source/thequestion.txt", "r") as f:
+    with open(os.path.join(srcdir, "thequestion.txt"), "r") as f:
         template = f.read()
 
-    with open("source/thequestion.rst", "w") as f:
+    with open(os.path.join(srcdir, "thequestion.rst"), "w") as f:
         f.write(template.format(script=script, options=options))
 
 

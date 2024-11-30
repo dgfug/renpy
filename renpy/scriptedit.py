@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -23,7 +23,9 @@
 # and the textual representation of Ren'Py code.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 import renpy
 import re
@@ -64,6 +66,10 @@ class Line(object):
         # The text of the line.
         self.text = ''
 
+        # The full text, including any comments or delimiters.
+        self.full_text = ''
+
+
     def __repr__(self):
         return "<Line {}:{} {!r}>".format(self.filename, self.number, self.text)
 
@@ -82,8 +88,8 @@ def ensure_loaded(filename):
 
     files.add(filename)
 
-    fn = renpy.parser.unelide_filename(filename)
-    renpy.parser.list_logical_lines(fn, add_lines=True)
+    fn = renpy.lexer.unelide_filename(filename)
+    renpy.lexer.list_logical_lines(fn, add_lines=True)
 
 
 def get_line_text(filename, linenumber):
@@ -311,7 +317,7 @@ def first_and_last_nodes(nodes):
 
 def adjust_ast_linenumbers(filename, linenumber, offset):
     """
-    This adjusts the line numbers in the the ast.
+    This adjusts the line numbers in the ast.
 
     `filename`
         The filename to adjust.
@@ -370,7 +376,7 @@ def can_add_before(filename, linenumber):
         first_and_last_nodes(nodes)
 
         return True
-    except:
+    except Exception:
         return False
 
 

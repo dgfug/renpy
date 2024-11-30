@@ -1,5 +1,4 @@
-﻿
-translate french strings:
+﻿translate french strings:
 
     # screens.rpy:251
     old "Back"
@@ -350,8 +349,8 @@ translate french strings:
     new "Bouton droit"
 
     # screens.rpy:1111
-    old "Mouse Wheel Up\nClick Rollback Side"
-    new "Molette de souris vers le haut\nClic du côté rembobinage"
+    old "Mouse Wheel Up"
+    new "Molette de souris vers le haut"
 
     # screens.rpy:1115
     old "Mouse Wheel Down"
@@ -400,3 +399,7 @@ translate french strings:
     # screens.rpy:1478
     old "Menu"
     new "Menu"
+
+    # game/screens.rpy:1108
+    old "Opens the accessibility menu."
+    new "Ouvre le menu d'accessibilité."

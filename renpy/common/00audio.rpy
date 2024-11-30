@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -38,7 +38,7 @@ init -1900 python:
             basename = os.path.basename(fn)
             base, ext = os.path.splitext(basename)
 
-            if not ext.lower() in [ ".wav", ".mp2", ".mp3", ".ogg", ".opus" ]:
+            if not ext.lower() in [ ".wav", ".mp2", ".mp3", ".ogg", ".opus", ".flac" ]:
                 continue
 
             base = base.lower()

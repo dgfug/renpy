@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -20,7 +20,9 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 import renpy
 
@@ -41,6 +43,9 @@ def create_dialogue_map(language):
     rv = { }
 
     def get_text(t):
+        if isinstance(t, renpy.ast.Say):
+            return t.what
+
         for i in t.block:
             if isinstance(i, renpy.ast.Say):
                 return i.what
@@ -82,6 +87,8 @@ def notags_filter(s):
                 if first:
 
                     brace = False
+                    first = False
+                    rv += '{{'
                 else:
                     brace = True
                     first = True
@@ -91,6 +98,8 @@ def notags_filter(s):
 
                 if brace:
                     brace = False
+                else:
+                    rv += i
 
             else:
                 first = False
@@ -149,13 +158,30 @@ def notags_filter(s):
     return square_pass(s)
 
 
+def combine_filter(s):
+
+    doubles = [ "{{", "%%" ]
+
+    if renpy.config.lenticular_bracket_ruby:
+        doubles.append("\u3010\u3010") # LENTICULAR BRACKET LEFT x 2
+
+    for double in doubles:
+        while True:
+            if s.find(double) >= 0:
+                i = s.find(double)
+                s = s[:i] + s[i+1:]
+            else:
+                break
+    return s
+
+
 def what_filter(s):
     return "[what]"
 
 
 class DialogueFile(object):
 
-    def __init__(self, filename, output, tdf=True, strings=False, notags=True, escape=True): # @ReservedAssignment
+    def __init__(self, filename, output, tdf=True, strings=False, notags=True, escape=True, language=None): # @ReservedAssignment
         """
         `filename`
             The file we're extracting dialogue from.
@@ -176,7 +202,7 @@ class DialogueFile(object):
 
         self.filename = filename
 
-        commondir = os.path.normpath(renpy.config.commondir)
+        commondir = os.path.normpath(renpy.config.commondir) # type: ignore
 
         if filename.startswith(commondir):
             return
@@ -185,12 +211,12 @@ class DialogueFile(object):
         self.notags = notags
         self.escape = escape
         self.strings = strings
+        self.language = language
 
         self.f = open(output, "a", encoding="utf-8")
 
-        self.write_dialogue()
-
-        self.f.close()
+        with self.f:
+            self.write_dialogue()
 
     def write_dialogue(self):
         """
@@ -206,7 +232,22 @@ class DialogueFile(object):
             if label is None:
                 label = ""
 
-            for n in t.block:
+            identifier = t.identifier.replace('.', '_')
+
+            tl = None
+            if self.language is not None:
+                tl = translator.language_translates.get((identifier, self.language), None)
+
+
+            if tl is None:
+                tl = t
+
+            if isinstance(tl, renpy.ast.TranslateSay):
+                block = [ tl ]
+            else:
+                block = tl.block
+
+            for n in block:
 
                 if isinstance(n, renpy.ast.Say):
 
@@ -219,6 +260,8 @@ class DialogueFile(object):
 
                     if self.notags:
                         what = notags_filter(what)
+
+                    what = combine_filter(what)
 
                     if self.escape:
                         what = quote_unicode(what)
@@ -250,7 +293,7 @@ class DialogueFile(object):
                 lines.sort(key=lambda x: int(x[4]))
 
         for line in lines:
-            self.f.write("\t".join(line).encode("utf-8") + "\n")
+            self.f.write("\t".join(line) + "\n")
 
     def get_strings(self):
         """
@@ -259,7 +302,7 @@ class DialogueFile(object):
 
         lines = []
 
-        filename = renpy.parser.elide_filename(self.filename)
+        filename = renpy.lexer.elide_filename(self.filename)
 
         for ss in renpy.translation.scanstrings.scan_strings(self.filename):
 
@@ -268,13 +311,19 @@ class DialogueFile(object):
 
             stl = renpy.game.script.translator.strings[None] # @UndefinedVariable
 
+            # don't include s in common.rpym
             if s in stl.translations:
                 continue
 
+            # avoid to include same s
             stl.translations[s] = s
+
+            s = renpy.translation.translate_string(s, self.language) # type: ignore
 
             if self.notags:
                 s = notags_filter(s)
+
+            s = combine_filter(s)
 
             if self.escape:
                 s = quote_unicode(s)
@@ -300,6 +349,7 @@ def dialogue_command():
     """
 
     ap = renpy.arguments.ArgumentParser(description="Generates or updates translations.")
+    ap.add_argument("language", help="The language to extract dialogue for.")
     ap.add_argument("--text", help="Output the dialogue as plain text, instead of a tab-delimited file.", dest="text", action="store_true")
     ap.add_argument("--strings", help="Output all translatable strings, not just dialogue.", dest="strings", action="store_true")
     ap.add_argument("--notags", help="Strip text tags from the dialogue.", dest="notags", action="store_true")
@@ -323,7 +373,7 @@ def dialogue_command():
                 "Ren'Py Script",
                 ]
 
-            f.write("\t".join(line).encode("utf-8") + "\n")
+            f.write("\t".join(line) + "\n")
 
     for dirname, filename in renpy.loader.listdirfiles():
         if dirname is None:
@@ -335,7 +385,11 @@ def dialogue_command():
             continue
 
         filename = os.path.normpath(filename)
-        DialogueFile(filename, output, tdf=tdf, strings=args.strings, notags=args.notags, escape=args.escape)
+        language = args.language
+        if language in ("None", ""):
+            language = None
+        DialogueFile(filename, output, tdf=tdf, strings=args.strings,
+                     notags=args.notags, escape=args.escape, language=language)
 
     return False
 

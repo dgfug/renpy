@@ -1,5 +1,7 @@
-﻿
-translate japanese strings:
+﻿translate japanese strings:
+    # game/new_project.rpy:77
+    old "{#language name and font}"
+    new "{font=SourceHanSansLite.ttf}日本語{/font}"
 
     # about.rpy:39
     old "[version!q]"
@@ -35,7 +37,7 @@ translate japanese strings:
 
     # android.rpy:31
     old "An x86 Java Development Kit is required to build Android packages on Windows. The JDK is different from the JRE, so it's possible you have Java without having the JDK.\n\nPlease {a=http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html}download and install the JDK{/a}, then restart the Ren'Py launcher."
-    new "Windows では、Android パッケージのビルドに 32-bit の Java 開発キットが必要です。JDK は JRE とは異なるため、JDK が無くても Java が利用できます。\n\n{a=http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html}JDK{/a}のダウンロードとインストールを行い、Ren'Py ランチャーを再起動して下さい。"
+    new "Windows では、Android パッケージのビルドに 32-bit の Java 開発キットが必要です。JDKはJREとは異なるため、JDKがなくてもJavaを使用できる可能性があります。\n\n{a=http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html}JDK{/a}のダウンロードとインストールを行い、Ren'Py ランチャーを再起動して下さい。"
 
     # android.rpy:32
     old "RAPT has been installed, but you'll need to install the Android SDK before you can build Android packages. Choose Install SDK to do this."
@@ -115,15 +117,15 @@ translate japanese strings:
 
     # android.rpy:333
     old "Phone"
-    new "Phone"
+    new "スマートフォン"
 
     # android.rpy:337
     old "Tablet"
-    new "Tablet"
+    new "タブレット"
 
     # android.rpy:341
     old "Television"
-    new "Television"
+    new "テレビ"
 
     # android.rpy:353
     old "Build:"
@@ -431,11 +433,11 @@ translate japanese strings:
 
     # front_page.rpy:165
     old "Tutorial"
-    new "Tutorial"
+    new "チュートリアル"
 
     # front_page.rpy:166
     old "The Question"
-    new "The Question"
+    new "ザ・クエスチョン"
 
     # front_page.rpy:182
     old "Active Project"
@@ -562,8 +564,8 @@ translate japanese strings:
     new "[project_dir!q] は既に存在します。違う名前を選択してください。"
 
     # gui7.rpy:341
-    old "What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of 1280x720 is a reasonable compromise."
-    new "どの解像度をこのプロジェクトに使用しますか？ Ren'py はウィンドウを拡大縮小することができますが、この設定は最初のウィンドウサイズ、描画される各アセットのサイズ、アセットが最もシャープに見えるサイズを決定します。\n\nデフォルトの 1280x720 が理にかなった推奨サイズです。"
+    old "What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of [default_size[0]]x[default_size[1]] is a reasonable compromise."
+    new "どの解像度をこのプロジェクトに使用しますか？ Ren'py はウィンドウを拡大縮小することができますが、この設定は最初のウィンドウサイズ、描画される各アセットのサイズ、アセットが最もシャープに見えるサイズを決定します。\n\nデフォルトの [default_size[0]]x[default_size[1]] が理にかなった推奨サイズです。"
 
     # gui7.rpy:389
     old "Creating the new project..."
@@ -667,7 +669,7 @@ translate japanese strings:
 
     # ios.rpy:37
     old "Creates an Xcode project corresponding to the current Ren'Py project."
-    new "現在の Ren'PY プロジェクトに対応する Xcode プロジェクトを作成します。"
+    new "現在の Ren'Py プロジェクトに対応する Xcode プロジェクトを作成します。"
 
     # ios.rpy:38
     old "Updates the Xcode project with the latest game files. This must be done each time the Ren'Py project changes."
@@ -723,7 +725,7 @@ translate japanese strings:
 
     # ios.rpy:354
     old "XCODE PROJECTS DIRECTORY"
-    new "XCODE PROJECTS DIRECTORY"
+    new "Xcode プロジェクトディレクトリ"
 
     # ios.rpy:354
     old "Please choose the Xcode Projects Directory using the directory chooser.\n{b}The directory chooser may have opened behind this window.{/b}"
@@ -1027,7 +1029,7 @@ translate japanese strings:
 
     # translations.rpy:200
     old "The extract command allows you to extract string translations from an existing project into a temporary file.\n\nThe merge command merges extracted translations into another project."
-    new "抽出コマンドは、このプロジェクトから文字列の翻訳（台詞以外の翻訳）を一時ファイルとして抽出します。\n\n統合コマンドは、抽出した翻訳をこのプロジェクトに統合します。"
+    new "抽出コマンドは、このプロジェクトから文字列の翻訳（台詞以外の翻訳）を一時ファイルとして抽出します。\n\n統合コマンドは、抽出した翻訳を別のプロジェクトに統合します。"
 
     # translations.rpy:224
     old "Ren'Py is generating translations...."
@@ -1091,7 +1093,7 @@ translate japanese strings:
 
     # translations.rpy:378
     old "Ren'Py has finished extracting dialogue. The extracted dialogue can be found in dialogue.[persistent.dialogue_format] in the base directory."
-    new "Ren'Py は台詞の抽出を終了しました。抽出した台詞は、base ディレクトリーの、[persistent.dialogue_format] にあります。"
+    new "Ren'Py は台詞の抽出を終了しました。抽出した台詞は、ディレクトリーの base.[persistent.dialogue_format] にあります。"
 
     # updater.rpy:75
     old "Select Update Channel"
@@ -1103,7 +1105,7 @@ translate japanese strings:
 
     # updater.rpy:91
     old "Release"
-    new "Release"
+    new "リリース"
 
     # updater.rpy:97
     old "{b}Recommended.{/b} The version of Ren'Py that should be used in all newly-released games."
@@ -1111,7 +1113,7 @@ translate japanese strings:
 
     # updater.rpy:102
     old "Prerelease"
-    new "Prerelease"
+    new "プレリリース"
 
     # updater.rpy:108
     old "A preview of the next version of Ren'Py that can be used for testing and taking advantage of new features, but not for final releases of games."
@@ -1119,7 +1121,7 @@ translate japanese strings:
 
     # updater.rpy:114
     old "Experimental"
-    new "Experimental"
+    new "実験的"
 
     # updater.rpy:120
     old "Experimental versions of Ren'Py. You shouldn't select this channel unless asked by a Ren'Py developer."
@@ -1127,7 +1129,7 @@ translate japanese strings:
 
     # updater.rpy:126
     old "Nightly"
-    new "Nightly"
+    new "ナイトリー"
 
     # updater.rpy:132
     old "The bleeding edge of Ren'Py development. This may have the latest features, or might not run at all."
@@ -1197,9 +1199,6 @@ translate japanese strings:
     old "PROJECTS:"
     new "プロジェクト:"
 
-
-translate japanese strings:
-
     # android.rpy:304
     old "Android: [project.current.display_name!q]"
     new "Android: [project.current.display_name!q]"
@@ -1244,9 +1243,6 @@ translate japanese strings:
     old "Extract Dialogue: [project.current.display_name!q]"
     new "台詞の抽出: [project.current.display_name!q]"
 
-
-translate japanese strings:
-
     # dmgcheck.rpy:50
     old "Ren'Py is running from a read only folder. Some functionality will not work."
     new "Ren'Py が読み取り専用フォルダーで起動しています。使えない機能があります。"
@@ -1283,9 +1279,6 @@ translate japanese strings:
     old "The height must be a number."
     new "画面の高さは数字でなければなりません。"
 
-
-translate japanese strings:
-
     # editor.rpy:152
     old "(Recommended) A modern and approachable text editor."
     new "（推奨）モダンで親しみやすいテキストエディターです。"
@@ -1312,7 +1305,7 @@ translate japanese strings:
 
     # editor.rpy:338
     old "Edit [text]."
-    new "Edit [text]."
+    new "[text] を編集します。"
 
     # front_page.rpy:215
     old "Open project"
@@ -1322,16 +1315,13 @@ translate japanese strings:
     old "Actions"
     new "アクション"
 
-
-translate japanese strings:
-
     # game/add_file.rpy:37
     old "The file name may not be empty."
     new "ファイル名が与えられていません。"
 
     # game/android.rpy:31
-    old "A 64-bit/x64 Java 8 Development Kit is required to build Android packages on Windows. The JDK is different from the JRE, so it's possible you have Java without having the JDK.\n\nPlease {a=http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html}download and install the JDK{/a}, then restart the Ren'Py launcher."
-    new "ウィンドウズでアンドロイドパッケージをビルドするには、 64-bit/x64 Java 8 Development Kit が必要になります。 JDK は JRE とは違うもので、Java には含まれていません。\n\n{a=http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html}JDK{/a}をダンロード、インストールしてから Ren'Py ランチャーを再起動してください。"
+    old "A 64-bit/x64 Java [JDK_REQUIREMENT] Development Kit is required to build Android packages on Windows. The JDK is different from the JRE, so it's possible you have Java without having the JDK.\n\nPlease {a=https://www.renpy.org/jdk/[JDK_REQUIREMENT]}download and install the JDK{/a}, then restart the Ren'Py launcher."
+    new "ウィンドウズでアンドロイドパッケージをビルドするには、 64-bit/x64 Java 8 Development Kit が必要になります。 JDKはJREとは異なるため、JDKがなくてもJavaを使用できる可能性があります。\n\n{a=https://www.renpy.org/jdk/[JDK_REQUIREMENT]}JDK{/a}をダンロード、インストールしてから Ren'Py ランチャーを再起動してください。"
 
     # game/android.rpy:50
     old "Selects the Debug build, which can be accessed through Android Studio. Changing between debug and release builds requires an uninstall from your device."
@@ -1523,7 +1513,7 @@ translate japanese strings:
 
     # game/androidstrings.rpy:52
     old "I was unable to use javac to compile a test file. If you haven't installed the Java Development Kit yet, please download it from:\n\nhttp://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html\n\nThe JDK is different from the JRE, so it's possible you have Java without having the JDK. Without a working JDK, I can't continue."
-    new "テストファイルのコンパイルに javac が利用できません。Java Development Kit をダウンロードしていないなら、\n\nhttp://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html\n\nからダウンロードしてください。 JDK は JRE とは違うもので、Java には含まれていません。JDK がなければ継続できません。"
+    new "テストファイルのコンパイルに javac が利用できません。Java Development Kit をダウンロードしていないなら、\n\nhttp://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html\n\nからダウンロードしてください。 JDKはJREとは異なるため、JDKがなくてもJavaを使用できる可能性があります。 動作するJDKなしには続行できません。"
 
     # game/androidstrings.rpy:53
     old "The version of Java on your computer does not appear to be JDK 8, which is the only version supported by the Android SDK. If you need to install JDK 8, you can download it from:\n\nhttp://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html\n\nYou can also set the JAVA_HOME environment variable to use a different version of Java."
@@ -1607,11 +1597,11 @@ translate japanese strings:
 
     # game/front_page.rpy:252
     old "Web"
-    new "Web"
+    new "ウェブ"
 
     # game/front_page.rpy:252
     old "(Beta)"
-    new "(Beta)"
+    new "(ベータ)"
 
     # game/front_page.rpy:198
     old "audio"
@@ -1659,7 +1649,7 @@ translate japanese strings:
 
     # game/web.rpy:118
     old "Web: [project.current.display_name!q]"
-    new "Web: [project.current.display_name!q]"
+    new "ウェブ: [project.current.display_name!q]"
 
     # game/web.rpy:148
     old "Build Web Application"
@@ -1687,7 +1677,7 @@ translate japanese strings:
 
     # game/web.rpy:164
     old "Beuc's Patreon"
-    new "Beuc's Patreon"
+    new "Beucのパトレオン"
 
     # game/web.rpy:182
     old "Ren'Py web applications require the entire game to be downloaded to the player's computer before it can start."
@@ -1700,9 +1690,6 @@ translate japanese strings:
     # game/web.rpy:195
     old "Before packaging web apps, you'll need to download RenPyWeb, Ren'Py's web support. Would you like to download RenPyWeb now?"
     new "ウェブアプリをパッケージングするために、RenPyWeb (Ren'Py's web support) をダウンロードする必要があります。 RenPyWeb をダウンロードしますか？"
-
-
-translate japanese strings:
 
     # game/androidstrings.rpy:47
     old "Do you want to automatically update the Java source code?"
@@ -1751,4 +1738,564 @@ translate japanese strings:
     # game/web.rpy:341
     old "Images and musics can be downloaded while playing. A 'progressive_download.txt' file will be created so you can configure this behavior."
     new "画像と音声がプレイ中にダウンロード可能です。 'progressive_download.txt' ファイルが作成されるのでこれを編集して振舞を設定できます。"
+
+    # game/android.rpy:35
+    old "A 64-bit/x64 Java 8 Development Kit is required to build Android packages on Windows. The JDK is different from the JRE, so it's possible you have Java without having the JDK.\n\nPlease {a=https://adoptopenjdk.net/?variant=openjdk8&jvmVariant=hotspot}download and install the JDK{/a}, then restart the Ren'Py launcher."
+    new "WindowsでAndroidパッケージをビルドするには64-bit/x64 Java 8 Development Kitが必要です。JDKはJREとは異なるため、JDKがなくてもJavaを使用できる可能性があります。\n\n{a=https://adoptopenjdk.net/?variant=openjdk8&jvmVariant=hotspot}JDKのダウンロードとインストール{/a}を行い、Ren'Pyランチャーを再起動してください。"
+
+    # game/android.rpy:403
+    old "Universal APK"
+    new "Universal APK"
+
+    # game/android.rpy:453
+    old "List Devices"
+    new "デバイスリスト"
+
+    # game/android.rpy:457
+    old "Wi-Fi Debugging Pair"
+    new "Wi-Fiデバッグペア"
+
+    # game/android.rpy:461
+    old "Wi-Fi Debugging Connect"
+    new "Wi-Fiデバッグ接続"
+
+    # game/android.rpy:465
+    old "Wi-Fi Debugging Disconnect"
+    new "Wi-Fiデバッグ切断"
+
+    # game/android.rpy:564
+    old "Wi-Fi Pairing Code"
+    new "Wi-Fiペアリングコード"
+
+    # game/android.rpy:564
+    old "If supported, this can be found in 'Developer options', 'Wireless debugging', 'Pair device with pairing code'."
+    new "サポートされていれば、Androidの'Developer options', 'Wireless debugging', 'Pair device with pairing code'にあるでしょう。"
+
+    # game/android.rpy:571
+    old "Pairing Host & Port"
+    new "ペアリングホスト&ポート"
+
+    # game/android.rpy:587
+    old "IP Address & Port"
+    new "IP アドレス&ポート"
+
+    # game/android.rpy:587
+    old "If supported, this can be found in 'Developer options', 'Wireless debugging'."
+    new "サポートされていれば、Androidの'Developer options', 'Wireless debugging'にあるでしょう。"
+
+    # game/android.rpy:603
+    old "This can be found in 'List Devices'."
+    new "これは'デバイスリスト'で見つけられます。"
+
+    # game/androidstrings.rpy:16
+    old "I'm installing the bundle."
+    new "バンドルをインストールしています。"
+
+    # game/androidstrings.rpy:17
+    old "Installing the bundle appears to have failed."
+    new "バンドルのインストールに失敗しました。"
+
+    # game/androidstrings.rpy:19
+    old "Launching the app appears to have failed."
+    new "Appの起動に失敗しました。"
+
+    # game/androidstrings.rpy:32
+    old "How much RAM do you want to allocate to Gradle?\n\nThis must be a positive integer number."
+    new "どれほどのRAMをGradleに使用許可しますか?\n\nこれは正の整数でなければいけません。"
+
+    # game/androidstrings.rpy:33
+    old "The RAM size must contain only numbers."
+    new "RAMサイズには数値のみを含めてください。"
+
+    # game/androidstrings.rpy:43
+    old "I was unable to use javac to compile a test file. If you haven't installed the Java Development Kit yet, please download it from:\n\nhttps://adoptopenjdk.net/?variant=openjdk8&jvmVariant=hotspot\n\nThe JDK is different from the JRE, so it's possible you have Java without having the JDK. Without a working JDK, I can't continue."
+    new "テストファイルのコンパイルにjavacを使用できませんでした。まだJava Development Kitをインストールしていないならば、\n\nhttps://adoptopenjdk.net/?variant=openjdk8&jvmVariant=hotspotからダウンロードしてください。\n\nJDKはJREとは異ります。JDKなしでJavaを利用できます。動作するJDKなしでは続行できません。"
+
+    # game/androidstrings.rpy:44
+    old "The version of Java on your computer does not appear to be JDK 8, which is the only version supported by the Android SDK. If you need to install JDK 8, you can download it from:\n\n{a=https://adoptium.net/?variant=openjdk8}https://adoptium.net/?variant=openjdk8{/a}\n\nYou can also set the JAVA_HOME environment variable to use a different version of Java."
+    new "あなとのコンピュータのJavaのバーションはAndroid SDKで唯一サポートされるJDK 8ではないようです。JDK 8をインストールする必要があれば、こちらからダウンロードできます。\n\n{a=https://adoptium.net/?variant=openjdk8}https://adoptium.net/?variant=openjdk8{/a}\n\nJAVA_HOME環境変数を設定して異るバージョンのJavaも利用できます。"
+
+    # game/androidstrings.rpy:57
+    old "I can create an application signing key for you. This key is required to create Universal APK for sideloading and stores other than Google Play.\n\nDo you want to create a key?"
+    new "アプリケーション署名キーを作成できます。このキーはサイドローディングとGoogle Play以外のストアのためのUniversal APKの作成に必要とされます。\n\nキーを作成しますか?"
+
+    # game/androidstrings.rpy:61
+    old "I can create a bundle signing key for you. This key is required to build an Android App Bundle (AAB) for upload to Google Play.\n\nDo you want to create a key?"
+    new "bundle署名キーを作成できます。このキーはGoogle PlayにアップするAndroid App  Bundle(AAB)のビルドに必要とされます。\n\nキーを作成しますか。"
+
+    # game/androidstrings.rpy:62
+    old "I will create the key in the bundle.keystore file.\n\nYou need to back this file up. If you lose it, you will not be able to upgrade your application.\n\nYou also need to keep the key safe. If evil people get this file, they could make fake versions of your application, and potentially steal your users' data.\n\nWill you make a backup of bundle.keystore, and keep it in a safe place?"
+    new "bundle.keystoreのキーを作成します。\n\nこのファイルはバックアップしてください。紛失すると、アプリケーションを更新できなくなります。\n\nキーは安全に管理してください。悪意ある物がキーを入手すると、あなたのアプリケーションの偽バージョンを作成して、ユーザーのデータを盗難する可能性があります。\n\nbundle.keystoreのバックアップを作成し、安全な場所に保存していますか?"
+
+    # game/androidstrings.rpy:63
+    old "Could not create bundle.keystore. Is keytool in your path?"
+    new "bundle.keystoreを作成できません。keytoolはパスにありますか?"
+
+    # game/gui7.rpy:311
+    old "{size=-4}\n\nThis will not overwrite gui/main_menu.png, gui/game_menu.png, and gui/window_icon.png, but will create files that do not exist.{/size}"
+    new "{size=-4}\n\nこれは gui/main_menu.png, gui/game_menu.png, and gui/window_icon.pngを上書きしませんが、ないファイルは作成します。{/size}"
+
+    # game/install.rpy:134
+    old "Install Live2D Cubism SDK for Native"
+    new "Live2D Cubism SDK for Native のインストール"
+
+    # game/install.rpy:147
+    old "Live2D in Ren'Py doesn't support the Web, Android x86_64 (including emulators and Chrome OS), and must be added to iOS projects manually. Live2D must be reinstalled after upgrading Ren'Py or installing Android support."
+    new "Ren'PyのLive2Dではweb,  Androidのx86_64(エミュレーターおよびChrome OS含む)は未サポートであり、iOSプロジェクトでは手動で追加する必要があります。Live2DはRen'Pyの更新やAndroidサポートのインストール後に再インストールする必要があります。"
+
+    # game/install.rpy:154
+    old "Install Steam Support"
+    new "Steamサポートのインストール"
+
+    # game/install.rpy:163
+    old "Before installing Steam support, please make sure you are a {a=https://partner.steamgames.com/}Steam partner{/a}."
+    new "Steamサポートのインストール前に、あなたが{a=https://partner.steamgames.com/}Steamパートナー{/a}であることを確認してください。"
+
+    # game/install.rpy:175
+    old "Steam support has already been installed."
+    new "Steamサポートはインストール済みです。"
+
+    # game/ios.rpy:339
+    old "There are known issues with the iOS simulator on Apple Silicon. Please test on x86_64 or iOS devices."
+    new "Apple SiliconのiOSシミュレータには既知の問題があります。 x86_64またはiOSデバイスでテストしてください。"
+
+    # game/preferences.rpy:206
+    old "Daily check for update"
+    new "毎日更新をチェックする"
+
+    # game/preferences.rpy:210
+    old "Default theme"
+    new "デフォルトテーマ"
+
+    # game/preferences.rpy:212
+    old "Dark theme"
+    new "ダークテーマ"
+
+    # game/preferences.rpy:213
+    old "Custom theme"
+    new "カスタムテーマ"
+
+    # game/updater.rpy:109
+    old "• {a=https://www.renpy.org/doc/html/changelog.html}View change log{/a}"
+    new "• {a=https://ja.renpy.org/doc/html/changelog.html}更新履歴を閲覧する{/a}"
+
+    # game/updater.rpy:111
+    old "• {a=https://www.renpy.org/dev-doc/html/changelog.html}View change log{/a}"
+    new "• {a=https://ja.renpy.org/dev-doc/html/changelog.html}更新履歴を閲覧する{/a}"
+
+    # game/web.rpy:330
+    old "Images and music can be downloaded while playing. A 'progressive_download.txt' file will be created so you can configure this behavior."
+    new "画像と音楽はプレイ中にダウンロードできます。'progressive_download.txt' ファイルが作成されるので、これを編集して振舞を設定できます。"
+
+    # game/web.rpy:334
+    old "Current limitations in the web platform mean that loading large images may cause audio or framerate glitches, and lower performance in general. Movies aren't supported."
+    new "Webプラットフォームでの現在の制限により大きな画像のロードはオーディオやフレームレートのグリッチと一般的なパフォーマンス低下をもたらします。ムービーは未サポートです。"
+
+    # game/web.rpy:338
+    old "There are known issues with Safari and other Webkit-based browsers that may prevent games from running."
+    new "Safariとその他Webkitベースのブラウザにはゲームの実行を妨げる既知の問題があります。"
+
+    # game/android.rpy:38
+    old "RAPT has been installed, but a bundle key hasn't been configured. Please create a new key, or restore bundle.keystore."
+    new "RAPTはインストールされていますが、bundleキーが設定されていません。新しくキーを作成するかbundle.keystoreを再保存してください。"
+
+    # game/android.rpy:40
+    old "Please select if you want a Play Bundle (for Google Play), or a Universal APK (for sideloading and other app stores)."
+    new "(Google Play用の)Play Bundleと(サイドローディングと他のAPPストア用の)Universal APKを選択してください。"
+
+    # game/android.rpy:55
+    old "Lists the connected devices."
+    new "接続されたデバイスをリストします。"
+
+    # game/android.rpy:56
+    old "Pairs with a device over Wi-Fi, on Android 11+."
+    new "Wi-Fi越しにAndroid 11+のデバイスとペアリングします。"
+
+    # game/android.rpy:57
+    old "Connects to a device over Wi-Fi, on Android 11+."
+    new "Wi-Fi越しにAndroid 11+のデバイスと接続します。"
+
+    # game/android.rpy:58
+    old "Disconnects a device connected over Wi-Fi."
+    new "Wi-Fiで接続しているデバイスを切断します。"
+
+    # game/android.rpy:60
+    old "Builds an Android App Bundle (ABB), intended to be uploaded to Google Play. This can include up to 2GB of data."
+    new "Google Playへのアップロード用にAndroid App Bundle(ABB)パッケージをビルドします。これには2GBまでのデータを含めます。"
+
+    # game/android.rpy:61
+    old "Builds a Universal APK package, intended for sideloading and stores other than Google Play. This can include up to 2GB of data."
+    new "サイドローディングとGoogle Play以外のストア用にUniversal APKパッケージをビルドします。これには2GBまでのデータを含めます。"
+
+    # game/android.rpy:398
+    old "Play Bundle"
+    new "Play Bundle"
+
+    # game/gui7.rpy:340
+    old "What resolution should the project use? Although Ren'Py can scale the window up and down, this is the initial size of the window, the size at which assets should be drawn, and the size at which the assets will be at their sharpest.\n\nThe default of 1280x720 is a reasonable compromise."
+    new "プロジェクトはどの解像度を使用しますか? Ren'Py ではウィンドウの拡大縮小ができますが、これはウィンドウの初期サイズであり、もっともアセットがシャープに描画されるサイズです。\n\nデフォルトの1280x720が合理的な妥当な案です。"
+
+    # game/android.rpy:60
+    old "Removes Android temporary files."
+    new "Android 一次ファイル削除"
+
+    # game/android.rpy:472
+    old "Clean"
+    new "クリーン"
+
+    # game/android.rpy:628
+    old "Cleaning up Android project."
+    new "Androidプロジェクトのクリーンアップ"
+
+    # game/androidstrings.rpy:43
+    old "I was unable to use javac to compile a test file. If you haven't installed the Java Development Kit yet, please download it from:\n\n{a=https://adoptium.net/?variant=openjdk8}https://adoptium.net/?variant=openjdk8{/a}\n\nThe JDK is different from the JRE, so it's possible you have Java without having the JDK. Please make sure you installed the 'JavaSoft (Oracle) registry keys'.\n\nWithout a working JDK, I can't continue."
+    new "javac を使用してテストファイルをコンパイルできませんでした。Java Development Kitをまだインストールしていないならば:\n\n{a=https://adoptium.net/?variant=openjdk8}https://adoptium.net/?variant=openjdk8{/a}からダウンロードしてください。\n\nJDKはJREとは異なるため、JDKがなくてもJavaを使用できる可能性があります。 'JavaSoft (Oracle) registry keys' をインストールしたかどうか確認してください。\n\n動作するJDKなしでは続行できません。"
+
+    # game/androidstrings.rpy:64
+    old "I've opened the directory containing android.keystore and bundle.keystore. Please back them up, and keep them in a safe place."
+    new "android.keystore と bundle.keystore を含むディレクトリーを開きました。それらをバックアップして、安全な場所に保管してください。"
+
+    # game/choose_directory.rpy:67
+    old "Select Projects Directory"
+    new "プロジェクトディレクトリーを選択してください"
+
+    # game/distribute.rpy:1690
+    old "Copying files..."
+    new "ファイルをコピーしています..."
+
+    # game/distribute_gui.rpy:195
+    old "Update old-game"
+    new "古いゲームの更新"
+
+    # game/editor.rpy:152
+    old "A modern editor with many extensions including advanced Ren'Py integration."
+    new "高度な Ren'Py 統合を含んだ拡張を伴うモダンなエディターです。"
+
+    # game/editor.rpy:153
+    old "A modern editor with many extensions including advanced Ren'Py integration.\n{a=jump:reinstall_vscode}Upgrade Visual Studio Code to the latest version.{/a}"
+    new "高度な Ren'Py 統合を含んだ拡張を伴うモダンなエディターです。\n{a=jump:reinstall_vscode}Visual Studio Codeを最新にアップグレードする。{/a}"
+
+    # game/editor.rpy:169
+    old "Visual Studio Code"
+    new "Visual Studio Code"
+
+    # game/editor.rpy:169
+    old "Up to 110 MB download required."
+    new "110 MBまでのダウンロードが必要です。"
+
+    # game/editor.rpy:182
+    old "A modern and approachable text editor."
+    new "モダンで親しみやすいテキストエディターです"
+
+    # game/editor.rpy:196
+    old "Atom"
+    new "Atom"
+
+    # game/editor.rpy:211
+    old "jEdit"
+    new "jEdit"
+
+    # game/editor.rpy:220
+    old "Visual Studio Code (System)"
+    new "Visual Studio Code（システム）"
+
+    # game/editor.rpy:220
+    old "Uses a copy of Visual Studio Code that you have installed outside of Ren'Py. It's recommended you install the language-renpy extension to add support for Ren'Py files."
+    new "あなたがRen'Py外にインストールしたVisual Studio Codeのコピーを使用します。language-renpy拡張をインストールしてRen'Pyファイルのサポート追加を推奨します。"
+
+    # game/installer.rpy:10
+    old "Downloading [extension.download_file]."
+    new "[extension.download_file]をダウンロード中です"
+
+    # game/installer.rpy:11
+    old "Could not download [extension.download_file] from [extension.download_url]:\n{b}[extension.download_error]"
+    new "[extension.download_url]から[extension.download_file]をダウンロードできません。:\n{b}[extension.download_error]"
+
+    # game/installer.rpy:12
+    old "The downloaded file [extension.download_file] from [extension.download_url] is not correct."
+    new "[extension.download_url]からダウンロードされた[extension.download_file]が正しくありません。"
+
+    # game/interface.rpy:124
+    old "[interface.version]"
+    new "[interface.version]"
+
+    # game/preferences.rpy:106
+    old "General"
+    new "一般"
+
+    # game/preferences.rpy:107
+    old "Options"
+    new "設定"
+
+    # game/preferences.rpy:246
+    old "Launcher Theme:"
+    new "ランチャーテーマ:"
+
+    # game/preferences.rpy:256
+    old "Information about creating a custom theme can be found {a=[skins_url]}in the Ren'Py Documentation{/a}."
+    new "カスタムテーマ作成情報は {a=[skins_url]}Ren'Pyのドキュメント{/a}で読めます。"
+
+    # game/preferences.rpy:273
+    old "Install Libraries:"
+    new "ライブラリインストール:"
+
+    # game/preferences.rpy:301
+    old "Clean temporary files"
+    new "一時ファイル削除"
+
+    # game/preferences.rpy:308
+    old "Cleaning temporary files..."
+    new "一時ファイルを削除しています..."
+
+    # game/preferences.rpy:338
+    old "{#in language font}Welcome! Please choose a language"
+    new "{font=SourceHanSansLite.ttf}言語を選択してください{/font}"
+
+    # game/preferences.rpy:373
+    old "{#in language font}Start using Ren'Py in [lang_name]"
+    new "{font=SourceHanSansLite.ttf}[lang_name]でRen'Pyの使用を開始します{/font}"
+
+    # game/project.rpy:280
+    old "This may be because the project is not writeable."
+    new "これはおそらくプロジェクトが書き込みではないためです"
+
+    # game/translations.rpy:391
+    old "Language (or None for the default language):"
+    new "Language (デフォルト言語はNoneです)"
+
+    # game/updater.rpy:64
+    old "Release (Ren'Py 8, Python 3)"
+    new "リリース（Ren'Py 8、Python 3）"
+
+    # game/updater.rpy:65
+    old "Release (Ren'Py 7, Python 2)"
+    new "リリース（Ren'Py 7、Python 2）"
+
+    # game/updater.rpy:69
+    old "Prerelease (Ren'Py 8, Python 3)"
+    new "プレリリース（Ren'Py 8、Python 3）"
+
+    # game/updater.rpy:70
+    old "Prerelease (Ren'Py 7, Python 2)"
+    new "プレリリース（Ren'Py 7、Python 2）"
+
+    # game/updater.rpy:77
+    old "Nightly (Ren'Py 8, Python 3)"
+    new "ナイトリー（Ren'Py 8、Python 3）"
+
+    # game/updater.rpy:78
+    old "Nightly (Ren'Py 7, Python 2)"
+    new "ナイトリー（Ren'Py 7、Python 2）"
+
+    # game/web.rpy:344
+    old "This feature is not supported in Ren'Py 8."
+    new "この機能はRen'Py 8ではサポートされていません。"
+
+    # game/web.rpy:344
+    old "We will restore support in a future release of Ren'Py 8. Until then, please use Ren'Py 7 for web support."
+    new "Ren'Py 8 の将来のリリースでサポートを復活させます。それまではRen'Py 7 をウェブプラットフォームに使用ください。"
+
+translate japanese strings:
+
+    # game/android.rpy:39
+    old "RAPT has been installed, but a key hasn't been configured. Please generate new keys, or copy android.keystore and bundle.keystore to the base directory."
+    new "RAPTはインストールされましたが、キーが設定されていません。新しいキーを生成するか、android.keystoreとbundle.keystoreをベースディレクトリにコピーしてください。"
+
+    # game/android.rpy:46
+    old "Attempts to emulate a televison-based Android console.\n\nController input is mapped to the arrow keys, Enter is mapped to the select button, Escape is mapped to the menu button, and PageUp is mapped to the back button."
+    new "テレビベースのAndroidコンソールのエミュレーションを試みる。\n\nコントローラー入力は矢印キーに、Enterはセレクトボタンに、Escapeはメニューボタンに、PageUpはバックボタンにマッピングされています。"
+
+    # game/android.rpy:48
+    old "Downloads and installs the Android SDK and supporting packages."
+    new "Android SDKとサポートパッケージのダウンロードとインストールを行います。"
+
+    # game/android.rpy:49
+    old "Generates the keys required to sign the package."
+    new "パッケージの署名に必要なキーを生成します。"
+
+    # game/android.rpy:383
+    old "Install SDK"
+    new "SDKのインストール"
+
+    # game/android.rpy:387
+    old "Generate Keys"
+    new "キーの生成"
+
+    # game/androidstrings.rpy:32
+    old "How much RAM (in GB) do you want to allocate to Gradle?\nThis must be a positive integer number."
+    new "Gradleに割り当てるRAMの量（GB）は？\n正の整数値である必要があります。"
+
+    # game/androidstrings.rpy:33
+    old "The RAM size must contain only numbers and be positive."
+    new "RAMサイズは、数字のみを含み、正の値でなければなりません。"
+
+    # game/androidstrings.rpy:63
+    old "I found an android.keystore file in the rapt directory. Do you want to use this file?"
+    new "raptディレクトリにandroid.keystoreファイルが見つかりました。このファイルを使用しますか？"
+
+    # game/androidstrings.rpy:66
+    old "\n\nSaying 'No' will prevent key creation."
+    new "\n\n「いいえ」と答えると、キーが作成できなくなります。"
+
+    # game/androidstrings.rpy:69
+    old "I found a bundle.keystore file in the rapt directory. Do you want to use this file?"
+    new "raptディレクトリにbundle.keystoreファイルがありました。このファイルを使用しますか？"
+
+    # game/distribute_gui.rpy:231
+    old "(DLC)"
+    new "(DLC)"
+
+    # game/project.rpy:46
+    old "Lint checks your game for potential mistakes, and gives you statistics."
+    new "Lintは、あなたのゲームに潜在的なミスがないかをチェックし、統計情報を提供します。"
+
+    # game/web.rpy:485
+    old "Creating package..."
+    new "パッケージの作成..."
+
+
+    # game/updater.rpy:79
+    old "A nightly build of fixes to the release version of Ren'Py."
+    # Automatic translation.
+    new "Ren'Py のリリース版に対する修正を行ったナイトリービルドです。"
+
+    # game/androidstrings.rpy:46
+    old "I was unable to use javac to compile a test file. If you haven't installed the Java Development Kit yet, please download it from:\n\n{a=https://adoptium.net}https://adoptium.net/{/a}\n\nThe JDK is different from the JRE, so it's possible you have Java without having the JDK. Please install JDK [JDK_REQUIREMENT], and add it to your PATH.\n\nWithout a working JDK, I can't continue."
+    new "javac を使用してテストファイルをコンパイルできませんでした。Java Development Kitをまだインストールしていないならば:\n\n{a=https://adoptium.net}https://adoptium.net/{/a}からダウンロードしてください。\n\nJDKはJREとは異なるため、JDKがなくてもJavaを使用できる可能性があります。JDK [JDK_REQUIREMENT] をインストールしてパスに追加してください。\n\n動作するJDKなしでは続行できません。"
+
+    # game/androidstrings.rpy:47
+    old "The version of Java on your computer does not appear to be JDK [JDK_REQUIREMENT], which is required to build Android apps. If you need to install a newer JDK, you can download it from:\n\n{a=https://adoptium.net/}https://adoptium.net/{/a}, and add it to your PATH.\n\nYou can also set the JAVA_HOME environment variable to use a different version of Java."
+    new "コンピューター上のJavaのバージョンはAndroidアプリをビルドするのに必要なJDK [JDK_REQUIREMENT] からはわかりません。より新しいJDKをインストール必要があれば次からダウンロードしてパスに追加してください。:\n\n{a=https://adoptium.net/}https://adoptium.net/{/a}\n\n JAVA_HOME 環境変数を設定して異なるバージョンのJavaの使用もできます。"
+
+    # game/choose_directory.rpy:72
+    old "No directory was selected, but one is required."
+    new "ディレクトリーを選択してください。"
+
+    # game/choose_directory.rpy:80
+    old "The selected directory does not exist."
+    new "選択されたディレクトリーがありません。"
+
+    # game/choose_directory.rpy:82
+    old "The selected directory is not writable."
+    new "選択されたディレクトリーは書き込みできません。"
+
+    # game/distribute.rpy:535
+    old "Building distributions failed:\n\nThe project is the Ren'Py Tutorial, which can't be distributed outside of Ren'Py. Consider using The Question as a test project."
+    new "配布物のビルドに失敗しました:\n\nプロジェクトは Tutorial ですが、これは Ren'Py 外に出せません。テストプロジェクトには The Question を使用してください。"
+
+    # game/distribute.rpy:562
+    old "This may be derived from build.name and config.version or build.version."
+    new "これは build.name と config.version または build.version から所得されます。"
+
+    # game/distribute.rpy:1620
+    old "Finishing the [variant] [format] package."
+    new "[variant] [format] のパッケージを完了しました。"
+
+    # game/editor.rpy:185
+    old "Atom is deprecated and its bugs are known for corrupting games, using another editor is recommended."
+    new "Atomは非推奨であり、そのバグはゲームを破壊することで知られているので他のエディタを使うことをお勧めします。"
+
+    # game/editor.rpy:214
+    old "JEdit is deprecated, using another editor is recommended."
+    new "JEditは非推奨です。他のエディタを使うことをお勧めします。"
+
+    # game/editor.rpy:607
+    old "The Atom text editor is no longer supported by its developers. We suggest switching to Visual Studio Code or another editor."
+    new "Atom はもう開発者自身にサポートされていません。Visual Studio Code や他のエディターを進めます。"
+
+    # game/editor.rpy:607
+    old "Select editor now."
+    new "今エディターを選択する"
+
+    # game/editor.rpy:607
+    old "Ignore until next launch."
+    new "次の起動まで無視する"
+
+    # game/editor.rpy:607
+    old "Do not ask again."
+    new "次回は尋ねません"
+
+    # game/new_project.rpy:38
+    old "Warning : you are using Ren'Py 7. It is recommended to start new projects using Ren'Py 8 instead."
+    new "警告 : Ren'Py 7 を使用しています。新しいプロジェクトの開始には代りに Ren'Py 8 の使用が推奨されています。"
+
+    # game/new_project.rpy:49
+    old "Please select a template project to use."
+    new "使用するテンプレートプロジェクトを選択してください。"
+
+    # game/new_project.rpy:49
+    old "Do not use a template project."
+    new "テンプレートプロジェクトを使用しない"
+
+    # game/preferences.rpy:94
+    old "Lint"
+    new "Lint"
+
+    # game/preferences.rpy:233
+    old "Game Options:"
+    new "ゲームオプション"
+
+    # game/preferences.rpy:240
+    old "Skip splashscreen"
+    new "スプラッシュスクリーンをスキップします"
+
+    # game/preferences.rpy:258
+    old "Restore window position"
+    new "ウィンドウ位置を復元します"
+
+    # game/preferences.rpy:262
+    old "Prefer RPU updates"
+    new "RPU アップデートを優先します"
+
+    # game/preferences.rpy:332
+    old "Open projects.txt"
+    new "projects.txt を開きます"
+
+    # game/preferences.rpy:356
+    old "Lint toggles:"
+    new "Lint トグル"
+
+    # game/preferences.rpy:360
+    old "Check for orphan/obsolete translations"
+    new "未使用の翻訳の確認"
+
+    # game/preferences.rpy:363
+    old "Check parameters shadowing reserved names"
+    new "予約された名前を shadowing するパラメーターを確認します"
+
+    # game/preferences.rpy:366
+    old "Print block, word, and character counts by speaking character."
+    new "ブロック、単語、話をするキャラクターの数を出力します"
+
+    # game/preferences.rpy:369
+    old "Unclosed text tags"
+    new "閉じられていないテキストタグ"
+
+    # game/preferences.rpy:372
+    old "Show all unreachable blocks and orphaned translations."
+    new "すべての到達できないブロックと対応するもののない翻訳を表示します"
+
+    # game/project.rpy:776
+    old "Splashscreen skipped in launcher preferences."
+    new "スプラッシュスクリーンはランチャー設定でスキップされています"
+
+    # game/updater.rpy:76
+    old "Nightly Fix"
+    new "Nightly Fix"
+
+    # game/updater.rpy:77
+    old "Nightly Fix (Ren'Py 8, Python 3)"
+    new "Nightly Fix (Ren'Py 8, Python 3)"
+
+    # game/updater.rpy:78
+    old "Nightly Fix (Ren'Py 7, Python 2)"
+    new "Nightly Fix (Ren'Py 7, Python 2)"
+
+    # game/install.rpy:186
+    old "The {a=https://www.live2d.com/en/download/cubism-sdk/download-native/}Cubism SDK for Native{/a} adds support for displaying Live2D models. Place CubismSdkForNative-{i}version{/i}.zip in the Ren'Py SDK directory, and then click Install. Distributing a game with Live2D requires you to accept a license from Live2D, Inc."
+    new "{a=https://www.live2d.com/en/download/cubism-sdk/download-native/}Cubism SDK for Native{/a} は Live2D モデルの表示サポートを追加します。CubismSdkForNative-{i}version{/i}.zip を Ren'Py SDK ディレクトリーに配置して、インストールをクリックしてください。Live2Dと共にゲームを配布するには Live2D, Inc からあなたがライセンスを所得する必要がります"
+
+    # game/preferences.rpy:258
+    old "Prefer the web documentation"
+    new "Web上のドキュメントを優先する"
 

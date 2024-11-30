@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -23,9 +23,16 @@
 # order.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
+from typing import Any
+
+# Initial import of the __main__ module. This gets replaced in renpy.py
+# whatever that module has been imported as.
+import __main__
 
 # All imports should go below renpy.compat.
 
+# Backup object, as it'll be overwritten when renpy.object is imported.
+_object = object # type: ignore
 
 def update_path():
     """
@@ -41,19 +48,16 @@ def update_path():
 
     try:
         import _renpy
-        if hasattr(_renpy, '__file__'): # .so/.dll
+        if hasattr(_renpy, '__file__') and _renpy.__file__ != "built-in":
             libexec = os.path.dirname(_renpy.__file__)
             package.__path__.append(os.path.join(libexec, *name))
-
-        # Also find encodings, to deal with the way py2exe lays things out.
-        import encodings
-        libexec = os.path.dirname(encodings.__path__[0])
-        package.__path__.append(os.path.join(libexec, *name))
     except ImportError:
         return
 
 
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 update_path()
 
 import renpy.compat.pickle as pickle
@@ -63,6 +67,7 @@ import os
 import copy
 import types
 import site
+from collections import namedtuple
 
 ################################################################################
 # Version information
@@ -70,37 +75,28 @@ import site
 
 # Version numbers.
 try:
-    from renpy.vc_version import vc_version, official, nightly
+    from renpy.vc_version import official, nightly, version_name, version
 except ImportError:
-    vc_version = 0
-    official = False
-    nightly = False
+    import renpy.versions
+    version_dict = renpy.versions.get_version()
+
+    official = version_dict["official"]
+    nightly = version_dict["nightly"]
+    version_name = version_dict["version_name"]
+    version = version_dict["version"]
 
 official = official and getattr(site, "renpy_build_official", False)
 
-if PY2:
-
-    # The tuple giving the version number.
-    version_tuple = (7, 5, 0, vc_version)
-
-    # The name of this version.
-    version_name = ""
-
-else:
-
-    # The tuple giving the version number.
-    version_tuple = (8, 0, 0, vc_version)
-
-    # The name of this version.
-    version_name = "Heck Freezes Over"
+VersionTuple = namedtuple("VersionTuple", ["major", "minor", "patch", "commit"])
+version_tuple = VersionTuple(*(int(i) for i in version.split(".")))
 
 # A string giving the version number only (8.0.1.123), with a suffix if needed.
 version_only = ".".join(str(i) for i in version_tuple)
 
 if not official:
-    version_only += "u"
+    version_only += "+unofficial"
 elif nightly:
-    version_only += "n"
+    version_only += "+nightly"
 
 # A verbose string giving the version.
 version = "Ren'Py " + version_only
@@ -152,17 +148,17 @@ def get_windows_version():
 
     try:
 
-        os_version = OSVERSIONINFOEXW()
+        os_version = OSVERSIONINFOEXW() # type: ignore
         os_version.dwOSVersionInfoSize = ctypes.sizeof(os_version)
-        retcode = ctypes.windll.Ntdll.RtlGetVersion(ctypes.byref(os_version))
+        retcode = ctypes.windll.Ntdll.RtlGetVersion(ctypes.byref(os_version)) # type: ignore
 
         # Om failure, assume we have a newer version of windows
         if retcode != 0:
             return (10, 0)
 
-        return (os_version.dwMajorVersion, os_version.dwMinorVersion)
+        return (os_version.dwMajorVersion, os_version.dwMinorVersion) # type: ignore
 
-    except:
+    except Exception:
         return (10, 0)
 
 
@@ -178,6 +174,8 @@ elif sys.platform == 'emscripten' or "RENPY_EMSCRIPTEN" in os.environ:
     emscripten = True
 else:
     linux = True
+
+arch = os.environ.get("RENPY_PLATFORM", "unknown-unknown-unknown").rpartition("-")[2]
 
 # A flag that's true if we're on a smartphone or tablet-like platform.
 mobile = android or ios or emscripten
@@ -212,8 +210,9 @@ backup_blacklist = {
     "renpy.debug",
     "renpy.display",
     "renpy.display.pgrender",
-    "renpy.display.scale",
     "renpy.display.presplash",
+    "renpy.display.scale",
+    "renpy.display.swdraw",
     "renpy.display.test",
     "renpy.six",
     "renpy.text.ftfont",
@@ -224,7 +223,6 @@ backup_blacklist = {
     "renpy.test.testmouse",
     "renpy.test.testparser",
     "renpy.gl2",
-    "renpy.gl",
     "renpycoverage",
     }
 
@@ -251,12 +249,13 @@ name_blacklist = {
     "renpy.audio.audio.lock",
     "renpy.audio.audio.periodic_condition",
     "renpy.webloader.queue_lock",
-    "renpy.persistent.save_MP_instances",
+    "renpy.persistent.MP_instances",
     "renpy.exports.sdl_dll",
+    "renpy.sl2.slast.serial",
+    "renpy.gl2.gl2draw.default_position",
     }
 
-
-class Backup(object):
+class Backup(_object):
     """
     This represents a backup of all of the fields in the python modules
     comprising Ren'Py, shortly after they were imported.
@@ -278,9 +277,6 @@ class Backup(object):
         # A map from module to the set of names in that module.
         self.names = { }
 
-        if mobile:
-            return
-
         for m in sys.modules.values():
             if m is None:
                 continue
@@ -288,9 +284,9 @@ class Backup(object):
             self.backup_module(m)
 
         # A pickled version of self.objects.
-        self.objects_pickle = pickle.dumps(self.objects, pickle.HIGHEST_PROTOCOL)
+        self.objects_pickle = pickle.dumps(self.objects, highest=True)
 
-        self.objects = None
+        self.objects = { }
 
     def backup_module(self, mod):
         """
@@ -299,7 +295,7 @@ class Backup(object):
 
         try:
             name = mod.__name__
-        except:
+        except Exception:
             return
 
         if not name.startswith("renpy"):
@@ -332,10 +328,10 @@ class Backup(object):
             # If we have a problem pickling things, uncomment the next block.
 
             try:
-                pickle.dumps(v, pickle.HIGHEST_PROTOCOL)
-            except:
+                pickle.dumps(v, highest=True)
+            except Exception:
                 print("Cannot pickle", name + "." + k, "=", repr(v))
-                print("Reduce Ex is:", repr(v.__reduce_ex__(pickle.HIGHEST_PROTOCOL)))
+                print("Reduce Ex is:", repr(v.__reduce_ex__(pickle.PROTOCOL)))
 
     def restore(self):
         """
@@ -348,7 +344,7 @@ class Backup(object):
 
         # Remove new variables from the module.
         for mod, names in self.names.items():
-            modvars = vars(mod)
+            modvars = mod.__dict__
             for name in set(modvars.keys()) - names:
                 del modvars[name]
 
@@ -388,10 +384,12 @@ def import_all():
 
     import renpy # @UnresolvedImport
 
-    import renpy.arguments # @UnresolvedImport
-
     import renpy.config
     import renpy.log
+
+    import renpy.arguments # @UnresolvedImport
+
+    import renpy.compat.fixes
 
     import renpy.display
 
@@ -407,29 +405,38 @@ def import_all():
     import renpy.loader
 
     import renpy.pyanalysis
+    sys.modules["renpy.py3analysis"] = renpy.pyanalysis
+
+    import renpy.parameter
 
     import renpy.ast
     import renpy.atl
     import renpy.curry
     import renpy.color
     import renpy.easy
+    import renpy.encryption
     import renpy.execution
+    import renpy.lexer
     import renpy.loadsave
-    import renpy.savelocation # @UnresolvedImport
+    import renpy.savelocation
+    import renpy.savetoken
     import renpy.persistent
     import renpy.scriptedit
     import renpy.parser
     import renpy.performance
     import renpy.pydict
+    import renpy.revertable
+    import renpy.rollback
     import renpy.python
     import renpy.script
     import renpy.statements
     import renpy.util
+    import renpy.versions
 
     global plog
-    plog = renpy.performance.log
+    plog = renpy.performance.log # type:ignore
 
-    import renpy.styledata # @UnresolvedImport
+    import renpy.styledata
 
     import renpy.style
     renpy.styledata.import_style_functions()
@@ -444,14 +451,17 @@ def import_all():
     import renpy.translation.extract
     import renpy.translation.merge
 
-    import renpy.display # @UnresolvedImport @Reimport
+    import renpy.display
 
     import renpy.display.presplash
     import renpy.display.pgrender
     import renpy.display.scale
     import renpy.display.module
-    import renpy.display.render # Most display stuff depends on this. @UnresolvedImport
-    import renpy.display.core # object @UnresolvedImport
+    import renpy.display.render
+    import renpy.display.displayable
+    import renpy.display.core
+    import renpy.display.scenelists
+    import renpy.display.swdraw
 
     import renpy.text
 
@@ -461,23 +471,22 @@ def import_all():
     import renpy.text.texwrap
     import renpy.text.text
     import renpy.text.extras
+    import renpy.text.shader
 
     sys.modules[pystr('renpy.display.text')] = renpy.text.text
 
-    import renpy.gl
     import renpy.gl2
-    import renpy.angle
 
     import renpy.display.layout
     import renpy.display.viewport
     import renpy.display.transform
-    import renpy.display.motion # layout @UnresolvedImport
-    import renpy.display.behavior # layout @UnresolvedImport
-    import renpy.display.transition # core, layout @UnresolvedImport
-    import renpy.display.movetransition # core @UnresolvedImport
+    import renpy.display.motion
+    import renpy.display.behavior
+    import renpy.display.transition
+    import renpy.display.movetransition
     import renpy.display.im
     import renpy.display.imagelike
-    import renpy.display.image # core, behavior, im, imagelike @UnresolvedImport
+    import renpy.display.image
     import renpy.display.video
     import renpy.display.focus
     import renpy.display.anim
@@ -493,6 +502,7 @@ def import_all():
     import renpy.display.tts
     import renpy.display.gesture
     import renpy.display.model
+    import renpy.display.quaternion
 
     import renpy.display.error
 
@@ -504,6 +514,7 @@ def import_all():
     import renpy.audio.audio
     import renpy.audio.music
     import renpy.audio.sound
+    import renpy.audio.filter
 
     import renpy.ui
     import renpy.screenlang
@@ -522,7 +533,7 @@ def import_all():
     import renpy.memory
 
     import renpy.exports
-    import renpy.character # depends on exports. @UnresolvedImport
+    import renpy.character
 
     import renpy.add_from
     import renpy.dump
@@ -535,8 +546,8 @@ def import_all():
     import renpy.gl2.gl2texture
     import renpy.gl2.live2d
 
-    import renpy.minstore # depends on lots. @UnresolvedImport
-    import renpy.defaultstore # depends on everything. @UnresolvedImport
+    import renpy.minstore
+    import renpy.defaultstore
 
     import renpy.test
     import renpy.test.testmouse
@@ -548,12 +559,15 @@ def import_all():
 
     import renpy.main
 
+    global six
+    import six
+    sys.modules[pystr('renpy.six')] = six
+
     # Back up the Ren'Py modules.
 
     global backup
 
-    if not mobile:
-        backup = Backup()
+    backup = Backup()
 
     post_import()
 
@@ -571,22 +585,22 @@ def post_import():
 
     # Import the contents of renpy.defaultstore into renpy.store, and set
     # up an alias as we do.
-    renpy.store = sys.modules['store']
-    renpy.exports.store = renpy.store
+    renpy.store = sys.modules['store'] # type: ignore
+    renpy.exports.store = renpy.store # type: ignore
     sys.modules['renpy.store'] = sys.modules['store']
 
     import subprocess
     sys.modules[pystr('renpy.subprocess')] = subprocess
 
     for k, v in renpy.defaultstore.__dict__.items():
-        renpy.store.__dict__.setdefault(k, v)
+        renpy.store.__dict__.setdefault(k, v) # type: ignore
 
-    renpy.store.eval = renpy.defaultstore.eval
+    renpy.store.eval = renpy.defaultstore.eval # type: ignore
 
     # Import everything into renpy.exports, provided it isn't
     # already there.
     for k, v in globals().items():
-        vars(renpy.exports).setdefault(k, v)
+        renpy.exports.__dict__.setdefault(k, v)
 
 
 def issubmodule(sub, module):
@@ -599,20 +613,16 @@ def reload_all():
     returned.
     """
 
-    if mobile:
-        raise Exception("Reloading is not supported on mobile platforms.")
+    # if mobile:
+    #     raise Exception("Reloading is not supported on mobile platforms.")
 
-    import renpy.style
-    import renpy.display
-
-    # Clear all pending exceptions.
-    sys.exc_clear()
+    import renpy
 
     # Quit audio.
     renpy.audio.audio.quit()
 
     # Reset the styles.
-    renpy.style.reset() # @UndefinedVariable
+    renpy.style.reset()  # type: ignore
 
     # Shut down the cache thread.
     renpy.display.im.cache.quit()
@@ -631,7 +641,7 @@ def reload_all():
     renpy.display.interface = None
 
     if not renpy.session.get("_keep_renderer", False):
-        renpy.display.draw.quit()
+        renpy.display.draw.quit() # type: ignore
         renpy.display.draw = None
 
     py_compile_cache = renpy.python.py_compile_cache
@@ -643,20 +653,15 @@ def reload_all():
             m = sys.modules[i]
 
             if m is not None:
-                m.__dict__.reset()
+                m.__dict__.reset() # type: ignore
 
             del sys.modules[i]
 
         elif any(issubmodule(i, m) for m in reload_modules):
-            m = sys.modules[i]
-
-            if m is not None:
-                m.__dict__.clear()
-
             del sys.modules[i]
 
     # Restore the state of all modules from backup.
-    backup.restore()
+    backup.restore() # type: ignore
 
     renpy.python.old_py_compile_cache = py_compile_cache
 
@@ -667,189 +672,74 @@ def reload_all():
     # Re-initialize the importer.
     renpy.loader.init_importer()
 
-################################################################################
-# Fix things for code analysis
-################################################################################
+if 1 == 0:
+    store = None # type: Any
 
 
-def setup_modulefinder(modulefinder):
-    """
-    Informs modulefinder about the location of modules in nonstandard places.
-    """
-
-    import _renpy
-
-    libexec = os.path.dirname(_renpy.__file__)
-
-    for i in [ "compat", "display", "gl", "gl2", "angle", "text", "styledata" ]:
-
-        displaypath = os.path.join(libexec, "renpy", i)
-
-        if os.path.exists(displaypath):
-            modulefinder.AddPackagePath('renpy.' + i, displaypath)
-
-
-# This is here to help code analysis tools figure out all the modules that get imported.
-# noinspection PyUnreachableCode
-if False:
-
-    import renpy # @UnresolvedImport
-
-    update_path(renpy)
-
-    import renpy.arguments # @UnresolvedImport
-
-    import renpy.config
-    import renpy.log
-
-    import renpy.display
-
-    import renpy.debug
-
-    # Should probably be early, as we will add it as a base to serialized things.
-    import renpy.object
-
-    import renpy.game
-    import renpy.preferences
-
-    # Adds in the Ren'Py loader.
-    import renpy.loader
-
-    import renpy.pyanalysis
-
-    import renpy.ast
-    import renpy.atl
-    import renpy.curry
-    import renpy.color
-    import renpy.easy
-    import renpy.execution
-    import renpy.loadsave
-    import renpy.savelocation # @UnresolvedImport
-    import renpy.persistent
-    import renpy.scriptedit
-    import renpy.parser
-    import renpy.performance
-    import renpy.pydict
-    import renpy.python
-    import renpy.script
-    import renpy.statements
-    import renpy.util
-
-    import renpy.styledata # @UnresolvedImport
-    import renpy.style
-    import renpy.substitutions
-    import renpy.translation
-    import renpy.translation.scanstrings
-    import renpy.translation.generation
-    import renpy.translation.dialogue
-    import renpy.translation.extract
-    import renpy.translation.merge
-
-    import renpy.display # @UnresolvedImport @Reimport
-
-    import renpy.display.presplash
-    import renpy.display.pgrender
-    import renpy.display.scale
-    import renpy.display.module
-    import renpy.display.render # Most display stuff depends on this. @UnresolvedImport
-    import renpy.display.core # object @UnresolvedImport
-
-    import renpy.text
-    import renpy.text.ftfont
-    import renpy.text.font
-    import renpy.text.textsupport
-    import renpy.text.texwrap
-    import renpy.text.text
-    import renpy.text.extras
-
-    import renpy.gl
-    import renpy.gl2
-
-    import renpy.display.layout
-    import renpy.display.viewport
-    import renpy.display.transform
-    import renpy.display.motion # layout @UnresolvedImport
-    import renpy.display.behavior # layout @UnresolvedImport
-    import renpy.display.transition # core, layout @UnresolvedImport
-    import renpy.display.movetransition # core @UnresolvedImport
-    import renpy.display.im
-    import renpy.display.imagelike
-    import renpy.display.image # core, behavior, im, imagelike @UnresolvedImport
-    import renpy.display.video
-    import renpy.display.focus
-    import renpy.display.anim
-    import renpy.display.particle
-    import renpy.display.joystick
-    import renpy.display.controller
-    import renpy.display.minigame
-    import renpy.display.screen
-    import renpy.display.dragdrop
-    import renpy.display.imagemap
-    import renpy.display.predict
-    import renpy.display.emulator
-    import renpy.display.tts
-    import renpy.display.gesture
-    import renpy.display.matrix
-    import renpy.display.render
-    import renpy.display.model
-
-    import renpy.display.error
-
-    # Note: For windows to work, renpy.audio.audio needs to be after
-    # renpy.display.module.
-
-    import renpy.audio
-    import renpy.audio.audio
-    import renpy.audio.music
-    import renpy.audio.sound
-
-    import renpy.ui
-    import renpy.screenlang
-
-    import renpy.sl2
-    import renpy.sl2.slast
-    import renpy.sl2.slparser
-    import renpy.sl2.slproperties
-    import renpy.sl2.sldisplayables
-
-    import renpy.lint
-    import renpy.warp
-
-    import renpy.editor
-
-    import renpy.memory
-
-    import renpy.exports
-    import renpy.character # depends on exports. @UnresolvedImport
-
-    import renpy.add_from
-    import renpy.dump
-
-    import renpy.minstore # depends on lots. @UnresolvedImport
-    import renpy.defaultstore # depends on everything. @UnresolvedImport
-
-    import renpy.test
-    import renpy.test.testmouse
-    import renpy.test.testfocus
-    import renpy.test.testkey
-    import renpy.test.testast
-    import renpy.test.testparser
-    import renpy.test.testexecution
-
-    import renpy.main
-
-    import renpy.defaultstore as store
-
-    import renpy.arguments
-
-# This is here to help code analysis tools figure out all the cython modules that get imported.
-# noinspection PyUnreachableCode
-if False:
-
-    import renpy.display.accelerator
-
-    import renpy.gl.gldraw
-    import renpy.gl.glenviron_shader
-    import renpy.gl.glrtt_copy
-    import renpy.gl.glrtt_fbo
-    import renpy.gl.gltexture
+# Generated by scripts/relative_imports.py, do not edit below this line.
+if 1 == 0:
+    from . import add_from
+    from . import arguments
+    from . import ast
+    from . import atl
+    from . import audio
+    from . import bootstrap
+    from . import character
+    from . import color
+    from . import compat
+    from . import config
+    from . import curry
+    from . import debug
+    from . import defaultstore
+    from . import display
+    from . import dump
+    from . import easy
+    from . import editor
+    from . import encryption
+    from . import error
+    from . import execution
+    from . import exports
+    from . import game
+    from . import gl
+    from . import gl2
+    from . import lexer
+    from . import lexersupport
+    from . import lint
+    from . import loader
+    from . import loadsave
+    from . import log
+    from . import main
+    from . import memory
+    from . import minstore
+    from . import object
+    from . import parameter
+    from . import parser
+    from . import performance
+    from . import persistent
+    from . import preferences
+    from . import pyanalysis
+    from . import pydict
+    from . import python
+    from . import revertable
+    from . import rollback
+    from . import savelocation
+    from . import savetoken
+    from . import screenlang
+    from . import script
+    from . import scriptedit
+    from . import sl2
+    from . import statements
+    from . import style
+    from . import styledata
+    from . import substitutions
+    from . import test
+    from . import text
+    from . import translation
+    from . import uguu
+    from . import ui
+    from . import update
+    from . import util
+    from . import vc_version
+    from . import versions
+    from . import warp
+    from . import webloader

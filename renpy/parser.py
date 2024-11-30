@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -22,1431 +22,40 @@
 # This module contains the parser for the Ren'Py script language. It's
 # called when parsing is necessary, and creates an AST from the script.
 
-from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from __future__ import division, absolute_import, with_statement, print_function, unicode_literals # type: ignore
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
 
-import codecs
-import re
-import os
+import collections
 import time
-import contextlib
 
-import renpy.display
-import renpy.test
-
+import renpy
 import renpy.ast as ast
-import renpy.sl2
+
+from renpy.parameter import EMPTY_ARGUMENTS, Parameter
+
+from renpy.lexer import (
+    list_logical_lines,
+    group_logical_lines,
+    ParseError,
+    Lexer,
+
+    # Kept imported for older games.
+    munge_filename,
+    elide_filename,
+    unelide_filename,
+    get_line_text,
+    SubParse,
+)
 
 # A list of parse error messages.
 parse_errors = [ ]
 
-from renpy.parsersupport import match_logical_word
-
-
-def get_line_text(filename, lineno):
-    """
-    Gets the text of a line, in a best-effort way, for debugging purposes. May
-    return just a newline.
-    """
-
-    import linecache
-    full_filename = renpy.exports.unelide_filename(filename)
-
-    print(full_filename, linecache.getline(full_filename, lineno))
-
-    try:
-        line = linecache.getline(full_filename, lineno) or "\n"
-        line = line.decode("utf-8")
-    except:
-        line = "\n"
-
-    return line
-
-
-class ParseError(Exception):
-
-    def __init__(self, filename, number, msg, line=None, pos=None, first=False):
-        message = u"File \"%s\", line %d: %s" % (unicode_filename(filename), number, msg)
-
-        if line:
-            if isinstance(line, list):
-                line = "".join(line)
-
-            lines = line.split('\n')
-
-            if len(lines) > 1:
-                open_string = None
-                i = 0
-
-                while i < len(lines[0]):
-                    c = lines[0][i]
-
-                    if c == "\\":
-                        i += 1
-                    elif c == open_string:
-                        open_string = None
-                    elif open_string:
-                        pass
-                    elif c == '`' or c == '\'' or c == '"':
-                        open_string = c
-
-                    i += 1
-
-                if open_string:
-                    message += "\n(Perhaps you left out a %s at the end of the first line.)" % open_string
-
-            for l in lines:
-                message += "\n    " + l
-
-                if pos is not None:
-                    if pos <= len(l):
-                        message += "\n    " + " " * pos + "^"
-                        pos = None
-                    else:
-                        pos -= len(l)
-
-                if first:
-                    break
-
-        self.message = message
-
-        Exception.__init__(self, message)
-
-    def __unicode__(self):
-        return self.message
-
-# Something to hold the expected line number.
-
-
-class LineNumberHolder(object):
-    """
-    Holds the expected line number.
-    """
-
-    def __init__(self):
-        self.line = 0
-
-
-def unicode_filename(fn):
-    """
-    Converts the supplied filename to unicode.
-    """
-
-    if isinstance(fn, str):
-        return fn
-
-    # Windows.
-    try:
-        return fn.decode("mbcs")
-    except:
-        pass
-
-    # Mac and (sane) Unix
-    try:
-        return fn.decode("utf-8")
-    except:
-        pass
-
-    # Insane systems, mojibake.
-    return fn.decode("latin-1")
-
-
-# Matches either a word, or something else. Most magic is taken care of
-# before this.
-lllword = re.compile(r'__(\w+)|\w+| +|.', re.S)
-
-
-def munge_filename(fn):
-    # The prefix that's used when __ is found in the file.
-    rv = os.path.basename(fn)
-    rv = os.path.splitext(rv)[0]
-    rv = rv.replace(" ", "_")
-
-    def munge_char(m):
-        return hex(ord(m.group(0)))
-
-    rv = re.sub(r'[^a-zA-Z0-9_]', munge_char, rv)
-
-    return "_m1_" + rv + "__"
-
-
-def elide_filename(fn):
-    """
-    Returns a version of fn that is either relative to the base directory,
-    or relative to the Ren'Py directory.
-    """
-
-    original_fn = fn
-    fn = fn.replace("\\", "/")
-
-    for d in [ renpy.config.basedir, renpy.config.renpy_base ]:
-        d = os.path.abspath(d).replace("\\", "/") + "/"
-        if fn.startswith(d):
-            rv = fn[len(d):]
-            break
-    else:
-        rv = original_fn.replace("\\", "/")
-
-    return rv
-
-
-def unelide_filename(fn):
-    fn = os.path.normpath(fn)
-
-    fn1 = os.path.join(renpy.config.basedir, fn)
-    if os.path.exists(fn1):
-        return fn1
-
-    fn2 = os.path.join(renpy.config.renpy_base, fn)
-    if os.path.exists(fn2):
-        return fn2
-
-    return fn
-
-
-# The filename that the start and end positions are relative to.
-original_filename = ""
-
-
-def list_logical_lines(filename, filedata=None, linenumber=1, add_lines=False):
-    """
-    Reads `filename`, and divides it into logical lines.
-
-    Returns a list of (filename, line number, line text) triples.
-
-    If `filedata` is given, it should be a unicode string giving the file
-    contents. In that case, `filename` need not exist.
-    """
-
-    def munge_string(m):
-        brackets = m.group(1)
-
-        if (len(brackets) & 1) == 0:
-            return m.group(0)
-
-        if "__" in m.group(2):
-            return m.group(0)
-
-        return brackets + prefix + m.group(2)
-
-    global original_filename
-
-    original_filename = filename
-
-    if filedata:
-        data = filedata
-    else:
-        with open(filename, "rb") as f:
-            data = f.read().decode("utf-8", "python_strict")
-
-    filename = elide_filename(filename)
-    prefix = munge_filename(filename)
-
-    # Add some newlines, to fix lousy editors.
-    data += "\n\n"
-
-    # The result.
-    rv = []
-
-    # The line number in the physical file.
-    number = linenumber
-
-    # The current position we're looking at in the buffer.
-    pos = 0
-
-    # Are we looking at a triple-quoted string?
-
-    # Skip the BOM, if any.
-    if len(data) and data[0] == u'\ufeff':
-        pos += 1
-
-    if add_lines or renpy.game.context().init_phase:
-        lines = renpy.scriptedit.lines
-    else:
-        lines = { }
-
-    len_data = len(data)
-
-    renpy.scriptedit.files.add(filename)
-
-    # Looping over the lines in the file.
-    while pos < len_data:
-
-        # The line number of the start of this logical line.
-        start_number = number
-
-        # The line that we're building up.
-        line = [ ]
-
-        # The number of open parenthesis there are right now.
-        parendepth = 0
-
-        loc = (filename, start_number)
-        lines[loc] = renpy.scriptedit.Line(original_filename, start_number, pos)
-
-        endpos = None
-
-        while pos < len_data:
-
-            startpos = pos
-            c = data[pos]
-
-            if c == u'\t':
-                raise ParseError(filename, number, "Tab characters are not allowed in Ren'Py scripts.")
-
-            if c == u'\n' and not parendepth:
-
-                line = ''.join(line)
-
-                # If not blank...
-                if not re.match(u"^\s*$", line):
-
-                    # Add to the results.
-                    rv.append((filename, start_number, line))
-
-                if endpos is None:
-                    endpos = pos
-
-                lines[loc].end_delim = endpos + 1
-
-                while data[endpos - 1] in u' \r':
-                    endpos -= 1
-
-                lines[loc].end = endpos
-                lines[loc].text = data[lines[loc].start:lines[loc].end]
-                lines[loc].full_text = data[lines[loc].start:lines[loc].end_delim]
-
-                pos += 1
-                number += 1
-                endpos = None
-                # This helps out error checking.
-                line = [ ]
-                break
-
-            if c == u'\n':
-                number += 1
-                endpos = None
-
-            if c == u"\r":
-                pos += 1
-                continue
-
-            # Backslash/newline.
-            if c == u"\\" and data[pos + 1] == u"\n":
-                pos += 2
-                number += 1
-                line.append(u"\\\n")
-                continue
-
-            # Parenthesis.
-            if c in u'([{':
-                parendepth += 1
-
-            if (c in u'}])') and parendepth:
-                parendepth -= 1
-
-            # Comments.
-            if c == u'#':
-                endpos = pos
-
-                while data[pos] != u'\n':
-                    pos += 1
-
-                continue
-
-            # Strings.
-            if c in u'"\'`':
-                delim = c
-                line.append(c)
-                pos += 1
-
-                escape = False
-                triplequote = False
-
-                if (pos < len_data - 1) and (data[pos] == delim) and (data[pos + 1] == delim):
-                    line.append(delim)
-                    line.append(delim)
-                    pos += 2
-                    triplequote = True
-
-                s = [ ]
-
-                while pos < len_data:
-
-                    c = data[pos]
-
-                    if c == u'\n':
-                        number += 1
-
-                    if c == u'\r':
-                        pos += 1
-                        continue
-
-                    if escape:
-                        escape = False
-                        pos += 1
-                        s.append(c)
-                        continue
-
-                    if c == delim:
-
-                        if not triplequote:
-                            pos += 1
-                            s.append(c)
-                            break
-
-                        if (pos < len_data - 2) and (data[pos + 1] == delim) and (data[pos + 2] == delim):
-                            pos += 3
-                            s.append(delim)
-                            s.append(delim)
-                            s.append(delim)
-                            break
-
-                    if c == u'\\':
-                        escape = True
-
-                    s.append(c)
-                    pos += 1
-
-                    continue
-
-                s = "".join(s)
-
-                if "[__" in s:
-
-                    # Munge substitutions.
-                    s = re.sub(r'(\.|\[+)__(\w+)', munge_string, s)
-
-                line.append(s)
-
-                continue
-
-            word, magic, end = match_logical_word(data, pos)
-
-            if magic:
-
-                rest = word[2:]
-
-                if u"__" not in rest:
-                    word = prefix + rest
-
-            line.append(word)
-            pos = end
-
-            if (pos - startpos) > 65536:
-                raise ParseError(filename, start_number, "Overly long logical line. (Check strings and parenthesis.)", line=line, first=True)
-
-    if line:
-        raise ParseError(filename, start_number, "is not terminated with a newline. (Check strings and parenthesis.)", line=line, first=True)
-
-    return rv
-
-
-def group_logical_lines(lines):
-    """
-    This takes as input the list of logical line triples output from
-    list_logical_lines, and breaks the lines into blocks. Each block
-    is represented as a list of (filename, line number, line text,
-    block) triples, where block is a block list (which may be empty if
-    no block is associated with this line.)
-    """
-
-    # Returns the depth of a line, and the rest of the line.
-    def depth_split(l):
-
-        depth = 0
-        index = 0
-
-        while True:
-            if l[index] == ' ':
-                depth += 1
-                index += 1
-                continue
-
-            # if l[index] == '\t':
-            #    index += 1
-            #    depth = depth + 8 - (depth % 8)
-            #    continue
-
-            break
-
-        return depth, l[index:]
-
-    # i, min_depth -> block, new_i
-    def gll_core(i, min_depth):
-
-        rv = []
-        depth = None
-
-        while i < len(lines):
-
-            filename, number, text = lines[i]
-
-            line_depth, rest = depth_split(text)
-
-            # This catches a block exit.
-            if line_depth < min_depth:
-                break
-
-            if depth is None:
-                depth = line_depth
-
-            if depth != line_depth:
-                raise ParseError(filename, number, "indentation mismatch.")
-
-            # Advance to the next line.
-            i += 1
-
-            # Try parsing a block associated with this line.
-            block, i = gll_core(i, depth + 1)
-
-            rv.append((filename, number, rest, block))
-
-        return rv, i
-
-    return gll_core(0, 0)[0]
-
-
-# A list of keywords which should not be parsed as names, because
-# there is a huge chance of confusion.
-#
-# Note: We need to be careful with what's in here, because these
-# are banned in simple_expressions, where we might want to use
-# some of them.
-KEYWORDS = set([
-    '$',
-    'as',
-    'at',
-    'behind',
-    'call',
-    'expression',
-    'hide',
-    'if',
-    'in',
-    'image',
-    'init',
-    'jump',
-    'menu',
-    'onlayer',
-    'python',
-    'return',
-    'scene',
-    'show',
-    'with',
-    'while',
-    'zorder',
-    'transform',
-    ])
-
-OPERATORS = [
-    '<>',
-    '<<',
-    '<=',
-    '<',
-    '>>',
-    '>=',
-    '>',
-    '!=',
-    '==',
-    '|',
-    '^',
-    '&',
-    '+',
-    '-',
-    '**',
-    '*',
-    '//',
-    '/',
-    '%',
-    '~',
-    ]
-
-ESCAPED_OPERATORS = [
-    r'\bor\b',
-    r'\band\b',
-    r'\bnot\b',
-    r'\bin\b',
-    r'\bis\b',
-    ]
-
-operator_regexp = "|".join([ re.escape(i) for i in OPERATORS ] + ESCAPED_OPERATORS)
-
-word_regexp = r'[a-zA-Z_\u00a0-\ufffd][0-9a-zA-Z_\u00a0-\ufffd]*'
-image_word_regexp = r'[-0-9a-zA-Z_\u00a0-\ufffd][-0-9a-zA-Z_\u00a0-\ufffd]*'
-
-
-class SubParse(object):
-    """
-    This represents the information about a subparse that can be provided to
-    a creator-defined statement.
-    """
-
-    def __init__(self, block):
-        self.block = block
-
-    def __repr__(self):
-
-        if not self.block:
-            return "<SubParse empty>"
-        else:
-            return "<SubParse {}:{}>".format(self.block[0].filename, self.block[0].linenumber)
-
-
-class Lexer(object):
-    """
-    The lexer that is used to lex script files. This works on the idea
-    that we want to lex each line in a block individually, and use
-    sub-lexers to lex sub-blocks.
-    """
-
-    def __init__(self, block, init=False, init_offset=0, global_label=None, monologue_delimiter="\n\n", subparses=None):
-
-        # Are we underneath an init block?
-        self.init = init
-
-        # The priority of auto-defined init statements.
-        self.init_offset = init_offset
-
-        self.block = block
-        self.eob = False
-
-        self.line = -1
-
-        # These are set by advance.
-        self.filename = ""
-        self.text = ""
-        self.number = 0
-        self.subblock = [ ]
-        self.global_label = global_label
-        self.pos = 0
-        self.word_cache_pos = -1
-        self.word_cache_newpos = -1
-        self.word_cache = ""
-
-        self.monologue_delimiter = monologue_delimiter
-
-        self.subparses = subparses
-
-    def advance(self):
-        """
-        Advances this lexer to the next line in the block. The lexer
-        starts off before the first line, so advance must be called
-        before any matching can be done. Returns True if we've
-        successfully advanced to a line in the block, or False if we
-        have advanced beyond all lines in the block. In general, once
-        this method has returned False, the lexer is in an undefined
-        state, and it doesn't make sense to call any method other than
-        advance (which will always return False) on the lexer.
-        """
-
-        self.line += 1
-
-        if self.line >= len(self.block):
-            self.eob = True
-            return False
-
-        self.filename, self.number, self.text, self.subblock = self.block[self.line]
-        self.pos = 0
-        self.word_cache_pos = -1
-
-        return True
-
-    def unadvance(self):
-        """
-        Puts the parsing point at the end of the previous line. This is used
-        after renpy_statement to prevent the advance that Ren'Py statements
-        do.
-        """
-
-        self.line -= 1
-        self.eob = False
-        self.filename, self.number, self.text, self.subblock = self.block[self.line]
-        self.pos = len(self.text)
-        self.word_cache_pos = -1
-
-    def match_regexp(self, regexp):
-        """
-        Tries to match the given regexp at the current location on the
-        current line. If it succeds, it returns the matched text (if
-        any), and updates the current position to be after the
-        match. Otherwise, returns None and the position is unchanged.
-        """
-
-        if self.eob:
-            return None
-
-        if self.pos == len(self.text):
-            return None
-
-        m = re.compile(regexp, re.DOTALL).match(self.text, self.pos)
-
-        if not m:
-            return None
-
-        self.pos = m.end()
-
-        return m.group(0)
-
-    def skip_whitespace(self):
-        """
-        Advances the current position beyond any contiguous whitespace.
-        """
-
-        # print self.text[self.pos].encode('unicode_escape')
-
-        self.match_regexp(r"(\s+|\\\n)+")
-
-    def match(self, regexp):
-        """
-        Matches something at the current position, skipping past
-        whitespace. Even if we can't match, the current position is
-        still skipped past the leading whitespace.
-        """
-
-        self.skip_whitespace()
-        return self.match_regexp(regexp)
-
-    def keyword(self, word):
-        """
-        Matches a keyword at the current position. A keyword is a word
-        that is surrounded by things that aren't words, like
-        whitespace. (This prevents a keyword from matching a prefix.)
-        """
-
-        oldpos = self.pos
-        if self.word() == word:
-            return word
-
-        self.pos = oldpos
-        return ''
-
-    @contextlib.contextmanager
-    def catch_error(self):
-        """
-        Catches errors, then causes the line to advance if it hasn't been
-        advanced already.
-        """
-
-        try:
-            yield
-        except ParseError as e:
-            parse_errors.append(e.message)
-
-    def error(self, msg):
-        """
-        Convenience function for reporting a parse error at the current
-        location.
-        """
-
-        raise ParseError(self.filename, self.number, msg, self.text, self.pos)
-
-    def eol(self):
-        """
-        Returns True if, after skipping whitespace, the current
-        position is at the end of the end of the current line, or
-        False otherwise.
-        """
-
-        self.skip_whitespace()
-        return self.pos >= len(self.text)
-
-    def expect_eol(self):
-        """
-        If we are not at the end of the line, raise an error.
-        """
-
-        if not self.eol():
-            self.error('end of line expected.')
-
-    def expect_noblock(self, stmt):
-        """
-        Called to indicate this statement does not expect a block.
-        If a block is found, raises an error.
-        """
-
-        if self.subblock:
-            ll = self.subblock_lexer()
-            ll.advance()
-            ll.error("Line is indented, but the preceding %s statement does not expect a block. Please check this line's indentation." % stmt)
-
-    def expect_block(self, stmt):
-        """
-        Called to indicate that the statement requires that a non-empty
-        block is present.
-        """
-
-        if not self.subblock:
-            self.error('%s expects a non-empty block.' % stmt)
-
-    def has_block(self):
-        """
-        Called to check if the current line has a non-empty block.
-        """
-        return bool(self.subblock)
-
-    def subblock_lexer(self, init=False):
-        """
-        Returns a new lexer object, equiped to parse the block
-        associated with this line.
-        """
-
-        init = self.init or init
-
-        return Lexer(self.subblock, init=init, init_offset=self.init_offset, global_label=self.global_label, monologue_delimiter=self.monologue_delimiter, subparses=self.subparses)
-
-    def string(self):
-        """
-        Lexes a string, and returns the string to the user, or None if
-        no string could be found. This also takes care of expanding
-        escapes and collapsing whitespace.
-
-        Be a little careful, as this can return an empty string, which is
-        different than None.
-        """
-
-        s = self.match(r'r?"([^\\"]|\\.)*"')
-
-        if s is None:
-            s = self.match(r"r?'([^\\']|\\.)*'")
-
-        if s is None:
-            s = self.match(r"r?`([^\\`]|\\.)*`")
-
-        if s is None:
-            return None
-
-        if s[0] == 'r':
-            raw = True
-            s = s[1:]
-        else:
-            raw = False
-
-        # Strip off delimiters.
-        s = s[1:-1]
-
-        def dequote(m):
-            c = m.group(1)
-
-            if c == "{":
-                return "{{"
-            elif c == "[":
-                return "[["
-            elif c == "%":
-                return "%%"
-            elif c == "n":
-                return "\n"
-            elif c[0] == 'u':
-                group2 = m.group(2)
-
-                if group2:
-                    return chr(int(m.group(2), 16))
-            else:
-                return c
-
-        if not raw:
-
-            # Collapse runs of whitespace into single spaces.
-            s = re.sub(r'\s+', ' ', s)
-            s = re.sub(r'\\(u([0-9a-fA-F]{1,4})|.)', dequote, s)
-
-        return s
-
-    def triple_string(self):
-        """
-        Lexes a triple quoted string, intended for use with monologue mode.
-        This is about the same as the double-quoted strings, except that
-        runs of whitespace with multiple newlines are turned into a single
-        newline.
-        """
-
-        s = self.match(r'r?"""([^\\"]|\\.)*"""')
-
-        if s is None:
-            s = self.match(r"r?'''([^\\']|\\.)*'''")
-
-        if s is None:
-            s = self.match(r"r?```([^\\`]|\\.)*```")
-
-        if s is None:
-            return None
-
-        if s[0] == 'r':
-            raw = True
-            s = s[1:]
-        else:
-            raw = False
-
-        # Strip off delimiters.
-        s = s[3:-3]
-
-        def dequote(m):
-            c = m.group(1)
-
-            if c == "{":
-                return "{{"
-            elif c == "[":
-                return "[["
-            elif c == "%":
-                return "%%"
-            elif c == "n":
-                return "\n"
-            elif c[0] == 'u':
-                group2 = m.group(2)
-
-                if group2:
-                    return chr(int(m.group(2), 16))
-            else:
-                return c
-
-        if not raw:
-
-            # Collapse runs of whitespace into single spaces.
-            s = re.sub(r' *\n *', '\n', s)
-
-            rv = [ ]
-
-            for s in s.split(self.monologue_delimiter):
-                s = s.strip()
-
-                if not s:
-                    continue
-
-                s = re.sub(r'\s+', ' ', s)
-                s = re.sub(r'\\(u([0-9a-fA-F]{1,4})|.)', dequote, s)
-
-                rv.append(s)
-
-            return rv
-
-        return s
-
-    def integer(self):
-        """
-        Tries to parse an integer. Returns a string containing the
-        integer, or None.
-        """
-
-        return self.match(r'(\+|\-)?\d+')
-
-    def float(self): # @ReservedAssignment
-        """
-        Tries to parse a number (float). Returns a string containing the
-        number, or None.
-        """
-
-        return self.match(r'(\+|\-)?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?')
-
-    def hash(self):
-        """
-        Matches the characters in an md5 hash, and then some.
-        """
-
-        return self.match(r'\w+')
-
-    def word(self):
-        """
-        Parses a name, which may be a keyword or not.
-        """
-
-        if self.pos == self.word_cache_pos:
-            self.pos = self.word_cache_newpos
-            return self.word_cache
-
-        self.word_cache_pos = self.pos
-        rv = self.match(word_regexp)
-        self.word_cache = rv
-        self.word_cache_newpos = self.pos
-
-        return rv
-
-    def name(self):
-        """
-        This tries to parse a name. Returns the name or None.
-        """
-
-        oldpos = self.pos
-        rv = self.word()
-
-        if (rv == "r") or (rv == "u") or (rv == "ur"):
-            if self.text[self.pos:self.pos + 1] in ('"', "'", "`"):
-                self.pos = oldpos
-                return None
-
-        if rv in KEYWORDS:
-            self.pos = oldpos
-            return None
-
-        return rv
-
-    def set_global_label(self, label):
-        """
-        Set current global_label, which is used for label_name calculations.
-        label can be any valid label or None, but this has only effect if label
-        has global part.
-        """
-        if label and label[0] != '.':
-            self.global_label = label.split('.')[0]
-
-    def label_name(self, declare=False):
-        """
-        Try to parse label name. Returns name in form of "global.local" if local
-        is present, "global" otherwise; or None if it doesn't parse.
-
-        If declare is True, allow only such names that are valid for declaration
-        (e.g. forbid global name mismatch)
-        """
-
-        old_pos = self.pos
-        local_name = None
-        global_name = self.name()
-
-        if not global_name:
-            # .local label
-            if not self.match('\.') or not self.global_label:
-                self.pos = old_pos
-                return None
-            global_name = self.global_label
-            local_name = self.name()
-            if not local_name:
-                self.pos = old_pos
-                return None
-        else:
-            if self.match('\.'):
-                # full global.local name
-                if declare and global_name != self.global_label:
-                    self.pos = old_pos
-                    return None
-
-                local_name = self.name()
-                if not local_name:
-                    self.pos = old_pos
-                    return None
-
-        if not local_name:
-            return global_name
-
-        return global_name + '.' + local_name
-
-    def label_name_declare(self):
-        """
-        Same as label_name, but set declare to True.
-        """
-        return self.label_name(declare=True)
-
-    def image_name_component(self):
-        """
-        Matches a word that is a component of an image name. (These are
-        strings of numbers, letters, and underscores.)
-        """
-
-        oldpos = self.pos
-        rv = self.match(image_word_regexp)
-
-        if (rv == "r") or (rv == "u"):
-            if self.text[self.pos:self.pos + 1] in ('"', "'", "`"):
-                self.pos = oldpos
-                return None
-
-        if rv in KEYWORDS:
-            self.pos = oldpos
-            return None
-
-        return rv
-
-    def python_string(self):
-        """
-        This tries to match a python string at the current
-        location. If it matches, it returns True, and the current
-        position is updated to the end of the string. Otherwise,
-        returns False.
-        """
-
-        if self.eol():
-            return False
-
-        old_pos = self.pos
-        c = self.text[self.pos]
-
-        # Allow unicode and raw strings.
-        for mod in ('u', 'r'):
-            if c != mod:
-                continue
-
-            self.pos += 1
-
-            if self.pos == len(self.text):
-                self.pos = old_pos
-                return False
-
-            c = self.text[self.pos]
-
-        if c not in ('"', "'"):
-            self.pos = old_pos
-            return False
-
-        delim = c
-
-        while True:
-            self.pos += 1
-
-            if self.eol():
-                self.error("end of line reached while parsing string.")
-
-            c = self.text[self.pos]
-
-            if c == delim:
-                break
-
-            if c == '\\':
-                self.pos += 1
-
-        self.pos += 1
-        return True
-
-    def dotted_name(self):
-        """
-        This tries to match a dotted name, which is one or more names,
-        separated by dots. Returns the dotted name if it can, or None
-        if it cannot.
-
-        Once this sees the first name, it commits to parsing a
-        dotted_name. It will report an error if it then sees a dot
-        without a name behind it.
-        """
-
-        rv = self.name()
-
-        if not rv:
-            return None
-
-        while self.match(r'\.'):
-            n = self.name()
-            if not n:
-                self.error('expecting name.')
-
-            rv += "." + n
-
-        return rv
-
-    def expr(self, s, expr):
-        if not expr:
-            return s
-
-        return renpy.ast.PyExpr(s, self.filename, self.number)
-
-    def delimited_python(self, delim, expr=True):
-        """
-        This matches python code up to, but not including, the non-whitespace
-        delimiter characters. Returns a string containing the matched code,
-        which may be empty if the first thing is the delimiter. Raises an
-        error if EOL is reached before the delimiter.
-        """
-
-        start = self.pos
-
-        while not self.eol():
-
-            c = self.text[self.pos]
-
-            if c in delim:
-                return self.expr(self.text[start:self.pos], expr)
-
-            if c in "'\"":
-                self.python_string()
-                continue
-
-            if self.parenthesised_python():
-                continue
-
-            self.pos += 1
-
-        self.error("reached end of line when expecting '%s'." % delim)
-
-    def python_expression(self, expr=True):
-        """
-        Returns a python expression, which is arbitrary python code
-        extending to a colon.
-        """
-
-        pe = self.delimited_python(':', False)
-
-        if not pe:
-            self.error("expected python_expression")
-
-        rv = self.expr(pe.strip(), expr) # E1101
-
-        return rv
-
-    def parenthesised_python(self):
-        """
-        Tries to match a parenthesised python expression. If it can,
-        returns true and updates the current position to be after the
-        closing parenthesis. Returns False otherwise.
-        """
-
-        c = self.text[self.pos]
-
-        if c == '(':
-            self.pos += 1
-            self.delimited_python(')', False)
-            self.pos += 1
-            return True
-
-        if c == '[':
-            self.pos += 1
-            self.delimited_python(']', False)
-            self.pos += 1
-            return True
-
-        if c == '{':
-            self.pos += 1
-            self.delimited_python('}', False)
-            self.pos += 1
-            return True
-
-        return False
-
-    def simple_expression(self, comma=False, operator=True):
-        """
-        Tries to parse a simple_expression. Returns the text if it can, or
-        None if it cannot.
-        """
-
-        start = self.pos
-
-        # Operator.
-        while True:
-
-            while self.match(operator_regexp):
-                pass
-
-            if self.eol():
-                break
-
-            # We start with either a name, a python_string, or parenthesized
-            # python
-            if not (self.python_string() or
-                    self.name() or
-                    self.float() or
-                    self.parenthesised_python()):
-
-                break
-
-            while True:
-                self.skip_whitespace()
-
-                if self.eol():
-                    break
-
-                # If we see a dot, expect a dotted name.
-                if self.match(r'\.'):
-                    n = self.word()
-                    if not n:
-                        self.error("expecting name after dot.")
-
-                    continue
-
-                # Otherwise, try matching parenthesised python.
-                if self.parenthesised_python():
-                    continue
-
-                break
-
-            if operator and self.match(operator_regexp):
-                continue
-
-            if comma and self.match(r','):
-                continue
-
-            break
-
-        text = self.text[start:self.pos].strip()
-
-        if not text:
-            return None
-
-        return renpy.ast.PyExpr(text, self.filename, self.number)
-
-    def comma_expression(self):
-        """
-        One or more simple expressions, separated by commas, including an
-        optional trailing comma.
-        """
-
-        return self.simple_expression(comma=True)
-
-    def say_expression(self):
-        """
-        Parses the name portion of a say statement.
-        """
-        return self.simple_expression(operator=False)
-
-    def checkpoint(self):
-        """
-        Returns an opaque representation of the lexer state. This can be
-        passed to revert to back the lexer up.
-        """
-
-        return self.line, self.filename, self.number, self.text, self.subblock, self.pos
-
-    def revert(self, state):
-        """
-        Reverts the lexer to the given state. State must have been returned
-        by a previous checkpoint operation on this lexer.
-        """
-
-        self.line, self.filename, self.number, self.text, self.subblock, self.pos = state
-        self.word_cache_pos = -1
-        if self.line < len(self.block):
-            self.eob = False
-        else:
-            self.eob = True
-
-    def get_location(self):
-        """
-        Returns a (filename, line number) tuple representing the current
-        physical location of the start of the current logical line.
-        """
-
-        return self.filename, self.number
-
-    def require(self, thing, name=None):
-        """
-        Tries to parse thing, and reports an error if it cannot be done.
-
-        If thing is a string, tries to parse it using
-        self.match(thing). Otherwise, thing must be a method on this lexer
-        object, which is called directly.
-        """
-
-        if isinstance(thing, basestring):
-            name = name or thing
-            rv = self.match(thing)
-        else:
-            name = name or thing.__func__.__name__
-            rv = thing()
-
-        if rv is None:
-            self.error("expected '%s' not found." % name)
-
-        return rv
-
-    def rest(self):
-        """
-        Skips whitespace, then returns the rest of the current
-        line, and advances the current position to the end of
-        the current line.
-        """
-
-        self.skip_whitespace()
-
-        pos = self.pos
-        self.pos = len(self.text)
-        return renpy.ast.PyExpr(self.text[pos:].strip(), self.filename, self.number)
-
-    def rest_statement(self):
-        """
-        Like rest, but returns a string rather than a PyExpr.
-        """
-
-        pos = self.pos
-        self.pos = len(self.text)
-        return self.text[pos:].strip()
-
-    def python_block(self):
-        """
-        Returns the subblock of this code, and subblocks of that
-        subblock, as indented python code. This tries to insert
-        whitespace to ensure line numbers match up.
-        """
-
-        rv = [ ]
-
-        o = LineNumberHolder()
-        o.line = self.number
-
-        def process(block, indent):
-
-            for _fn, ln, text, subblock in block:
-
-                while o.line < ln:
-                    rv.append(indent + '\n')
-                    o.line += 1
-
-                linetext = indent + text + '\n'
-
-                rv.append(linetext)
-                o.line += linetext.count('\n')
-
-                process(subblock, indent + '    ')
-
-        process(self.subblock, '')
-        return ''.join(rv)
-
-    def arguments(self):
-        """
-        Returns an Argument object if there is a list of arguments, or None
-        there is not one.
-        """
-
-        return parse_arguments(self)
-
-    def renpy_statement(self):
-        """
-        Parses the remainder of the current line as a statement in the
-        Ren'Py script language. Returns a SubParse corresponding to the
-        AST node generated by that statement.
-        """
-
-        if self.subparses is None:
-            raise Exception("A renpy_statement can only be parsed inside a creator-defined statement.")
-
-        block = parse_statement(self)
-        self.unadvance()
-
-        if not isinstance(block, list):
-            block = [ block ]
-
-        sp = SubParse(block)
-        self.subparses.append(sp)
-
-        return sp
-
-    def renpy_block(self, empty=False):
-
-        if self.subparses is None:
-            raise Exception("A renpy_block can only be parsed inside a creator-defined statement.")
-
-        if self.line < 0:
-            self.advance()
-
-        block = [ ]
-
-        while not self.eob:
-            try:
-
-                stmt = parse_statement(self)
-
-                if isinstance(stmt, list):
-                    block.extend(stmt)
-                else:
-                    block.append(stmt)
-
-            except ParseError as e:
-                parse_errors.append(e.message)
-                self.advance()
-
-        if not block:
-            if empty:
-                block.append(ast.Pass(self.get_location()))
-            else:
-                self.error("At least one Ren'Py statement is expected.")
-
-        sp = SubParse(block)
-        self.subparses.append(sp)
-
-        return sp
-
+# A list of deferred parser error. These are potential parse errors that
+# can be released or not when parse errors are reported.
+deferred_parse_errors = collections.defaultdict(list)
+
+################################################################################
+# Parsing of structures that are less than a full statement.
 
 def parse_image_name(l, string=False, nodash=False):
     """
@@ -1472,7 +81,7 @@ def parse_image_name(l, string=False, nodash=False):
     if string:
         points.append(l.checkpoint())
 
-        s = l.simple_expression()
+        s = l.simple_expression(image=True)
 
         if s is not None:
             rv.append(str(s))
@@ -1489,20 +98,20 @@ def parse_image_name(l, string=False, nodash=False):
     return tuple(rv)
 
 
-def parse_simple_expression_list(l):
+def parse_simple_expression_list(l, image=False):
     """
     This parses a comma-separated list of simple_expressions, and
     returns a list of strings. It requires at least one
     simple_expression be present.
     """
 
-    rv = [ l.require(l.simple_expression) ]
+    rv = [ l.require(l.simple_expression, image=image) ]
 
     while True:
         if not l.match(','):
             break
 
-        e = l.simple_expression()
+        e = l.simple_expression(image=image)
 
         if not e:
             break
@@ -1524,7 +133,7 @@ def parse_image_specifier(l):
     behind = [ ]
 
     if l.keyword("expression") or l.keyword("image"):
-        expression = l.require(l.simple_expression)
+        expression = l.require(l.simple_expression, image=True)
         image_name = (expression.strip(),)
     else:
         image_name = parse_image_name(l, True)
@@ -1536,7 +145,7 @@ def parse_image_specifier(l):
             if layer:
                 l.error("multiple onlayer clauses are prohibited.")
             else:
-                layer = l.require(l.name)
+                layer = l.require(l.image_name_component)
 
             continue
 
@@ -1545,7 +154,7 @@ def parse_image_specifier(l):
             if at_list:
                 l.error("multiple at clauses are prohibited.")
             else:
-                at_list = parse_simple_expression_list(l)
+                at_list = parse_simple_expression_list(l, image=True)
 
             continue
 
@@ -1563,7 +172,7 @@ def parse_image_specifier(l):
             if zorder is not None:
                 l.error("multiple zorder clauses are prohibited.")
             else:
-                zorder = l.require(l.simple_expression)
+                zorder = l.require(l.simple_expression, image=True)
 
             continue
 
@@ -1611,15 +220,12 @@ def parse_menu(stmtl, loc, arguments):
 
     has_choice = False
 
-    has_say = False
+    say_ast = None
     has_caption = False
 
     with_ = None
     set = None # @ReservedAssignment
 
-    say_who = None
-    say_what = None
-    say_loc = None
 
     # Tuples of (label, condition, block)
     items = [ ]
@@ -1645,24 +251,34 @@ def parse_menu(stmtl, loc, arguments):
         state = l.checkpoint()
 
         who = l.simple_expression()
-        what = l.string()
+
+        attributes = say_attributes(l)
+
+        if l.match(r'\@'):
+            temporary_attributes = say_attributes(l)
+        else:
+            temporary_attributes = None
+
+        what = l.triple_string() or l.string()
 
         if who is not None and what is not None:
-
-            l.expect_eol()
-            l.expect_noblock("say menuitem")
 
             if has_caption:
                 l.error("Say menuitems and captions may not exist in the same menu.")
 
-            if has_say:
+            if say_ast:
                 l.error("Only one say menuitem may exist per menu.")
 
-            has_say = True
-            say_who = who
-            say_what = what
-            say_loc = l.get_location()
+            say_ast = finish_say(l, l.get_location(), who, what, attributes, temporary_attributes, interact=False)
 
+            if isinstance(say_ast, list):
+                if len(say_ast) == 1:
+                    say_ast = say_ast[0]
+                else:
+                    l.error("Monologue mode cannot be used in a menu.")
+
+            l.expect_eol()
+            l.expect_noblock("say menuitem")
             continue
 
         l.revert(state)
@@ -1678,7 +294,7 @@ def parse_menu(stmtl, loc, arguments):
             if l.subblock:
                 l.error("Line is followed by a block, despite not being a menu choice. Did you forget a colon at the end of the line?")
 
-            if label and has_say:
+            if label and say_ast:
                 l.error("Captions and say menuitems may not exist in the same menu.")
 
             # Only set this if the caption is not "".
@@ -1712,10 +328,10 @@ def parse_menu(stmtl, loc, arguments):
         stmtl.error("Menu does not contain any choices.")
 
     rv = [ ]
-    if has_say:
-        rv.append(ast.Say(say_loc, say_who, say_what, None, interact=False))
+    if say_ast:
+        rv.append(say_ast)
 
-    rv.append(ast.Menu(loc, items, set, with_, has_say or has_caption, arguments, item_arguments))
+    rv.append(ast.Menu(loc, items, set, with_, say_ast is not None or has_caption, arguments, item_arguments))
 
     for index, i in enumerate(rv):
         if index:
@@ -1727,137 +343,195 @@ def parse_menu(stmtl, loc, arguments):
 
 
 def parse_parameters(l):
-
-    parameters = [ ]
-    positional = [ ]
-    extrapos = None
-    extrakw = None
-
-    add_positional = True
-
-    names = set()
+    """
+    Parse a list of parameters according to PEP 570 semantic, if one is present.
+    """
 
     if not l.match(r'\('):
         return None
 
-    while True:
+    # Result list of parameters, by (name, default value) pairs
+    parameters = collections.OrderedDict()
 
-        if l.match('\)'):
-            break
+    # Encountered a slash
+    got_slash = False
+
+    # Encountered a star or a *args
+    now_kwonly = False
+
+    kind = Parameter.POSITIONAL_OR_KEYWORD
+
+    # Got a lone * and no parameter after it
+    missing_kwonly = False
+
+    # Encountered a defaulted parameter
+    now_default = False
+
+    def name_parsed(name):
+        if name in parameters:
+            l.error("duplicate parameter name {!r}".format(name))
+
+    while not l.match(r'\)'):
 
         if l.match(r'\*\*'):
 
-            if extrakw is not None:
-                l.error('a label may have only one ** parameter')
-
             extrakw = l.require(l.name)
+            name_parsed(extrakw)
+            parameters[extrakw] = Parameter(extrakw, Parameter.VAR_KEYWORD)
 
-            if extrakw in names:
-                l.error('parameter %s appears twice.' % extrakw)
+            if l.match(r'='):
+                l.error("a var-keyword parameter (**{}) cannot have a default value".format(extrakw))
 
-            names.add(extrakw)
+            # Allow trailing comma
+            l.match(r',')
+
+            # extrakw is always last parameter
+            if not l.match(r'\)'):
+                l.error("no parameter can follow a var-keyword parameter (**{})".format(extrakw))
+
+            break
 
         elif l.match(r'\*'):
 
-            if not add_positional:
-                l.error('a label may have only one * parameter')
+            if now_kwonly:
+                l.error("* may appear only once")
 
-            add_positional = False
+            now_kwonly = True
+            kind = Parameter.KEYWORD_ONLY
+
+            # we can have a defaulted pos-or-kw and then a required kw-only
+            now_default = False
 
             extrapos = l.name()
 
             if extrapos is not None:
 
-                if extrapos in names:
-                    l.error('parameter %s appears twice.' % extrapos)
+                name_parsed(extrapos)
+                parameters[extrapos] = Parameter(extrapos, Parameter.VAR_POSITIONAL)
 
-                names.add(extrapos)
+                if l.match(r'='):
+                    l.error("a var-positional parameter (*{}) cannot have a default value".format(extrapos))
+
+            else:
+                missing_kwonly = True
+
+        elif l.match(r'/\*'):
+            l.error("expected comma between / and *")
+
+        elif l.match('/'):
+
+            if now_kwonly:
+                l.error("/ must be ahead of *")
+
+            elif got_slash:
+                l.error("/ may appear only once")
+
+            elif not parameters:
+                l.error("at least one parameter must precede /")
+
+            # All previous parameters are actually positional-only
+            parameters = collections.OrderedDict((k, p.replace(kind=p.POSITIONAL_ONLY)) for k, p in parameters.items())
+
+            got_slash = True
 
         else:
 
             name = l.require(l.name)
 
-            if name in names:
-                l.error('parameter %s appears twice.' % name)
+            missing_kwonly = False
 
-            names.add(name)
+            default = Parameter.empty
 
             if l.match(r'='):
                 l.skip_whitespace()
-                default = l.delimited_python("),")
-                if not default.strip():
-                    l.error("Empty parameter default.")
-            else:
-                default = None
+                default = l.delimited_python("),").strip()
+                now_default = True
 
-            parameters.append((name, default))
+                if not default:
+                    l.error("empty default value for parameter {!r}".format(name))
 
-            if add_positional:
-                positional.append(name)
+            elif now_default and not now_kwonly:
+                l.error("non-default parameter {!r} follows a default parameter".format(name))
+
+            name_parsed(name)
+            parameters[name] = Parameter(name, kind=kind, default=default)
 
         if l.match(r'\)'):
             break
 
         l.require(r',')
 
-    return renpy.ast.ParameterInfo(parameters, positional, extrapos, extrakw)
+    if missing_kwonly:
+        l.error("a bare * must be followed by a parameter")
+
+    return renpy.parameter.Signature(parameters.values())
 
 
 def parse_arguments(l):
     """
-    Parse a list of arguments, if one is present.
+    Parse a list of arguments according to PEP 448 semantics, if one is present.
     """
-
-    arguments = [ ]
-    extrakw = None
-    extrapos = None
-
-    has_kw = False
 
     if not l.match(r'\('):
         return None
 
-    while True:
+    if l.match(r'\)'):
+        return EMPTY_ARGUMENTS
 
-        if l.match('\)'):
+    arguments = [ ]
+    starred_indexes = set()
+    doublestarred_indexes = set()
+
+    index = 0
+    keyword_parsed = False
+    names = set()
+
+    while True:
+        expect_starred = False
+        expect_doublestarred = False
+        name = None
+
+        if l.match(r'\)'):
             break
 
         if l.match(r'\*\*'):
-
-            if extrakw is not None:
-                l.error('a call may have only one ** argument')
-
-            extrakw = l.delimited_python("),")
+            expect_doublestarred = True
+            doublestarred_indexes.add(index)
 
         elif l.match(r'\*'):
-            if extrapos is not None:
-                l.error('a call may have only one * argument')
+            expect_starred = True
+            starred_indexes.add(index)
 
-            extrapos = l.delimited_python("),")
+        state = l.checkpoint()
 
-        else:
+        if not (expect_starred or expect_doublestarred):
+            name = l.word()
 
-            state = l.checkpoint()
+            if name and l.match(r'=') and not l.match('='):
+                if name in names:
+                    l.error("keyword argument repeated: '%s'" % name)
+                else:
+                    names.add(name)
+                keyword_parsed = True
 
-            name = l.name()
-            if not (name and l.match(r'=')):
+            elif keyword_parsed:
+                l.error("positional argument follows keyword argument")
+
+            # If we have not '=' after name, the name itself may be expression.
+            else:
                 l.revert(state)
                 name = None
 
-            if name:
-                has_kw = True
-            elif has_kw:
-                l.error("positional argument follows keyword argument")
-
-            l.skip_whitespace()
-            arguments.append((name, l.delimited_python("),")))
+        l.skip_whitespace()
+        arguments.append((name, l.delimited_python("),")))
 
         if l.match(r'\)'):
             break
 
         l.require(r',')
+        index += 1
 
-    return renpy.ast.ArgumentInfo(arguments, extrapos, extrakw)
+    return renpy.parameter.ArgumentInfo(arguments, starred_indexes, doublestarred_indexes)
 
 ##############################################################################
 # The parse trie.
@@ -1963,6 +637,48 @@ def if_statement(l, loc):
     return ast.If(loc, entries)
 
 
+@statement("IF")
+def IF_statement(l, loc):
+
+    rv = None
+
+    condition = l.require(l.python_expression)
+    l.require(':')
+    l.expect_eol()
+    l.expect_block('IF statement')
+
+    if renpy.python.py_eval(condition):
+        rv = parse_block(l.subblock_lexer())
+
+    l.advance()
+
+    while l.keyword('ELIF'):
+
+        condition = l.require(l.python_expression)
+        l.require(':')
+        l.expect_eol()
+        l.expect_block('ELIF clause')
+
+        if (rv is None) and renpy.python.py_eval(condition):
+            rv = parse_block(l.subblock_lexer())
+
+        l.advance()
+
+    if l.keyword('ELSE'):
+        l.require(':')
+        l.expect_eol()
+        l.expect_block('ELSE clause')
+
+        if rv is None:
+            rv = parse_block(l.subblock_lexer())
+
+        l.advance()
+
+    if rv is None:
+        rv = [ ]
+
+    return rv
+
 @statement("while")
 def while_statement(l, loc):
     condition = l.require(l.python_expression)
@@ -2040,12 +756,12 @@ def jump_statement(l, loc):
     l.expect_eol()
     l.advance()
 
-    return ast.Jump(loc, target, expression)
+    return ast.Jump(loc, target, expression, (expression and l.global_label or ""))
 
 
 @statement("call")
 def call_statement(l, loc):
-    l.expect_noblock('call statment')
+    l.expect_noblock('call statement')
 
     if l.keyword('expression'):
         expression = True
@@ -2061,7 +777,7 @@ def call_statement(l, loc):
 
     arguments = parse_arguments(l)
 
-    rv = [ ast.Call(loc, target, expression, arguments) ]
+    rv = [ ast.Call(loc, target, expression, arguments, (expression and l.global_label or "")) ] # type: list[ast.Call|ast.Label|ast.Pass]
 
     if l.keyword('from'):
         name = l.require(l.label_name_declare)
@@ -2069,9 +785,9 @@ def call_statement(l, loc):
     else:
         if renpy.scriptedit.lines and (loc in renpy.scriptedit.lines):
             if expression:
-                renpy.add_from.report_missing("expression", original_filename, renpy.scriptedit.lines[loc].end)
+                renpy.add_from.report_missing("expression", renpy.lexer.original_filename, renpy.scriptedit.lines[loc].end)
             else:
-                renpy.add_from.report_missing(target, original_filename, renpy.scriptedit.lines[loc].end)
+                renpy.add_from.report_missing(target, renpy.lexer.original_filename, renpy.scriptedit.lines[loc].end)
 
     rv.append(ast.Pass(loc))
 
@@ -2083,13 +799,13 @@ def call_statement(l, loc):
 
 @statement("scene")
 def scene_statement(l, loc):
+    layer = None
     if l.keyword('onlayer'):
-        layer = l.require(l.name)
-    else:
-        layer = "master"
+        layer = l.require(l.image_name_component)
+        l.expect_eol()
 
-    # Empty.
-    if l.eol():
+    if layer or l.eol():
+        # No displayable.
         l.advance()
         return ast.Scene(loc, None, layer)
 
@@ -2098,6 +814,7 @@ def scene_statement(l, loc):
     rv = parse_with(l, stmt)
 
     if l.match(':'):
+        l.expect_block('scene statement')
         stmt.atl = renpy.atl.parse_atl(l.subblock_lexer())
     else:
         l.expect_noblock('scene statement')
@@ -2115,6 +832,7 @@ def show_statement(l, loc):
     rv = parse_with(l, stmt)
 
     if l.match(':'):
+        l.expect_block('show statement')
         stmt.atl = renpy.atl.parse_atl(l.subblock_lexer())
     else:
         l.expect_noblock('show statement')
@@ -2128,7 +846,7 @@ def show_statement(l, loc):
 @statement("show layer")
 def show_layer_statement(l, loc):
 
-    layer = l.require(l.name)
+    layer = l.require(l.image_name_component)
 
     if l.keyword("at"):
         at_list = parse_simple_expression_list(l)
@@ -2136,6 +854,7 @@ def show_layer_statement(l, loc):
         at_list = [ ]
 
     if l.match(':'):
+        l.expect_block('show layer statement')
         atl = renpy.atl.parse_atl(l.subblock_lexer())
     else:
         atl = None
@@ -2152,7 +871,7 @@ def show_layer_statement(l, loc):
 @statement("camera")
 def camera_statement(l, loc):
 
-    layer = l.name() or 'master'
+    layer = l.image_name_component() or 'master'
 
     if l.keyword("at"):
         at_list = parse_simple_expression_list(l)
@@ -2160,6 +879,7 @@ def camera_statement(l, loc):
         at_list = [ ]
 
     if l.match(':'):
+        l.expect_block('camera statement')
         atl = renpy.atl.parse_atl(l.subblock_lexer())
     else:
         atl = None
@@ -2201,6 +921,7 @@ def image_statement(l, loc):
 
     if l.match(':'):
         l.expect_eol()
+        l.expect_block('image statement')
         expr = None
         atl = renpy.atl.parse_atl(l.subblock_lexer())
     else:
@@ -2314,18 +1035,35 @@ def transform_statement(l, loc):
     else:
         priority = 0
 
+    store = 'store'
     name = l.require(l.name)
+
+    while l.match(r'\.'):
+        store = store + "." + name
+        name = l.require(l.word)
+
     parameters = parse_parameters(l)
 
-    if parameters and (parameters.extrakw or parameters.extrapos):
-        l.error('transform statement does not take a variable number of parameters')
+    if parameters:
+        found_pos_only = False
+        for p in parameters.parameters.values():
+            if p.kind == p.POSITIONAL_ONLY and not found_pos_only:
+                found_pos_only = True
+                l.deferred_error("atl_pos_only", "the transform statement does not take positional-only parameters ({} is not allowed)".format(p))
+            elif p.kind == p.VAR_POSITIONAL:
+                l.error("the transform statement does not take *args ({} is not allowed)".format(p))
+            elif p.kind == p.VAR_KEYWORD:
+                l.error("the transform statement does not take **kwargs ({} is not allowed)".format(p))
+            elif (p.kind == p.KEYWORD_ONLY) and (p.default is p.empty):
+                l.error("the transform statement does not take required keyword-only parameters ({} is not allowed)".format(p))
 
     l.require(':')
     l.expect_eol()
+    l.expect_block('transform statement')
 
     atl = renpy.atl.parse_atl(l.subblock_lexer())
 
-    rv = ast.Transform(loc, name, atl, parameters)
+    rv = ast.Transform(loc, store, name, atl, parameters) #type: ignore
 
     if not l.init:
         rv = ast.Init(loc, [ rv ], priority + l.init_offset)
@@ -2441,11 +1179,20 @@ def init_statement(l, loc):
 
     else:
 
+        old_init = l.init
+
         try:
-            old_init = l.init
             l.init = True
 
-            block = [ parse_statement(l) ]
+            checkpoint = l.checkpoint()
+
+            stmt = parse_statement(l)
+
+            if not isinstance(stmt, ast.Node):
+                l.revert(checkpoint)
+                l.error("init expects a block or statement")
+
+            block = [ stmt ]
 
         finally:
             l.init = old_init
@@ -2460,8 +1207,10 @@ def rpy_statement(l, loc):
         l.monologue_delimiter = "\n\n"
     elif l.keyword("single"):
         l.monologue_delimiter = "\n"
+    elif l.keyword("none"):
+        l.monologue_delimiter = ""
     else:
-        l.error("rpy monologue expects either single or double.")
+        l.error("rpy monologue expects either none, single or double.")
 
     l.expect_eol()
     l.expect_noblock('rpy monologue')
@@ -2470,29 +1219,15 @@ def rpy_statement(l, loc):
     return [ ]
 
 
-def screen1_statement(l, loc):
+@statement("screen")
+def screen_statement(l, loc):
 
-    # The guts of screen language parsing is in screenlang.py. It
-    # assumes we ate the "screen" keyword before it's called.
-    screen = renpy.screenlang.parse_screen(l)
+    slver = l.integer()
+    if slver is not None:
+        screen_language = int(slver)
+        if screen_language < 0 or screen_language > 2:
+            l.error("Bad screen language version.")
 
-    l.advance()
-
-    if not screen:
-        return [ ]
-
-    rv = ast.Screen(loc, screen)
-
-    if not l.init:
-        rv = ast.Init(loc, [ rv ], -500 + l.init_offset)
-
-    return rv
-
-
-def screen2_statement(l, loc):
-
-    # The guts of screen language parsing is in screenlang.py. It
-    # assumes we ate the "screen" keyword before it's called.
     screen = renpy.sl2.slparser.parse_screen(l, loc)
 
     l.advance()
@@ -2505,27 +1240,6 @@ def screen2_statement(l, loc):
     return rv
 
 
-# The version of screen language to use by default.
-default_screen_language = int(os.environ.get("RENPY_SCREEN_LANGUAGE", "2"))
-
-
-@statement("screen")
-def screen_statement(l, loc):
-
-    screen_language = default_screen_language
-
-    slver = l.integer()
-    if slver is not None:
-        screen_language = int(slver)
-
-    if screen_language == 1:
-        return screen1_statement(l, loc)
-    elif screen_language == 2:
-        return screen2_statement(l, loc)
-    else:
-        l.error("Bad screen language version.")
-
-
 @statement("testcase")
 def testcase_statement(l, loc):
     name = l.require(l.name)
@@ -2533,7 +1247,10 @@ def testcase_statement(l, loc):
     l.expect_eol()
     l.expect_block('testcase statement')
 
-    test = renpy.test.testparser.parse_block(l.subblock_lexer(), loc)
+    ll = l.subblock_lexer()
+    ll.set_global_label(name)
+
+    test = renpy.test.testparser.parse_block(ll, loc)
 
     l.advance()
 
@@ -2561,9 +1278,9 @@ def translate_strings(init_loc, language, l):
         s = s.strip()
 
         try:
-            bc = compile(s, "<string>", "eval", renpy.python.new_compile_flags, 1)
+            bc = compile(s, "<string>", "eval", renpy.python.new_compile_flags, True)
             return eval(bc, renpy.store.__dict__)
-        except:
+        except Exception:
             ll.error('could not parse string')
 
     while ll.advance():
@@ -2577,7 +1294,7 @@ def translate_strings(init_loc, language, l):
 
             try:
                 old = parse_string(ll.rest())
-            except:
+            except Exception:
                 ll.error("Could not parse string.")
 
         elif ll.keyword('new'):
@@ -2586,10 +1303,12 @@ def translate_strings(init_loc, language, l):
                 ll.error('no string to translate')
 
             newloc = ll.get_location()
+
             try:
                 new = parse_string(ll.rest())
-            except:
+            except Exception:
                 ll.error("Could not parse string.")
+                new = None
 
             block.append(renpy.ast.TranslateString(loc, language, old, new, newloc))
 
@@ -2611,6 +1330,7 @@ def translate_strings(init_loc, language, l):
 
     return ast.Init(init_loc, block, l.init_offset)
 
+translate_none_files = set()
 
 @statement("translate")
 def translate_statement(l, loc):
@@ -2626,8 +1346,9 @@ def translate_statement(l, loc):
         return translate_strings(loc, language, l)
 
     elif identifier == "python":
+        old_init = l.init
+
         try:
-            old_init = l.init
             l.init = True
 
             block = [ python_statement(l, loc) ]
@@ -2636,8 +1357,9 @@ def translate_statement(l, loc):
             l.init = old_init
 
     elif identifier == "style":
+        old_init = l.init
+
         try:
-            old_init = l.init
             l.init = True
 
             block = [ style_statement(l, loc) ]
@@ -2647,6 +1369,10 @@ def translate_statement(l, loc):
 
     l.require(':')
     l.expect_eol()
+
+    if language is None and (loc[0] not in translate_none_files):
+        l.deferred_error("check_translate_none", "The `translate None` statement (without style or python) is not allowed. Use say with id instead. (https://www.renpy.org/doc/html/translation.html#tips)")
+        translate_none_files.add(loc[0])
 
     l.expect_block("translate statement")
 
@@ -2662,7 +1388,6 @@ def style_statement(l, loc):
 
     # Parse priority and name.
     name = l.require(l.word)
-    parent = None
 
     rv = ast.Style(loc, name)
 
@@ -2671,21 +1396,21 @@ def style_statement(l, loc):
     def parse_clause(l):
 
         if l.keyword("is"):
-            if parent is not None:
+            if rv.parent is not None:
                 l.error("parent clause appears twice.")
 
-            rv.parent = l.require(l.word)
+            rv.parent = l.require(l.word) # type: ignore
             return True
 
         if l.keyword("clear"):
-            rv.clear = True
+            rv.clear = True # type: ignore
             return True
 
         if l.keyword("take"):
-            if rv.take is not None:
+            if rv.take is not None: # type: ignore
                 l.error("take clause appears twice.")
 
-            rv.take = l.require(l.name)
+            rv.take = l.require(l.name) # type: ignore
             return True
 
         if l.keyword("del"):
@@ -2694,14 +1419,14 @@ def style_statement(l, loc):
             if propname not in renpy.style.prefixed_all_properties: # @UndefinedVariable
                 l.error("style property %s is not known." % propname)
 
-            rv.delattr.append(propname)
+            rv.delattr.append(propname) # type: ignore
             return True
 
         if l.keyword("variant"):
-            if rv.variant is not None:
+            if rv.variant is not None: # type: ignore
                 l.error("variant clause appears twice.")
 
-            rv.variant = l.require(l.simple_expression)
+            rv.variant = l.require(l.simple_expression) # type: ignore
 
             return True
 
@@ -2711,10 +1436,10 @@ def style_statement(l, loc):
             if (propname != "properties") and (propname not in renpy.style.prefixed_all_properties): # @UndefinedVariable
                 l.error("style property %s is not known." % propname)
 
-            if propname in rv.properties:
+            if propname in rv.properties: # type: ignore
                 l.error("style property %s appears twice." % propname)
 
-            rv.properties[propname] = l.require(l.simple_expression)
+            rv.properties[propname] = l.require(l.simple_expression) # type: ignore
 
             return True
 
@@ -2748,25 +1473,30 @@ def style_statement(l, loc):
 
 
 @statement("rpy python")
-def rpy_python_3(l, loc):
+def rpy_python(l, loc):
 
-    l.require('3')
+    rv = []
+
+    while (not rv) or l.match(","):
+
+        r = l.match("3") # for compatibility with old code.
+        if not r:
+            r = l.require(l.word, "__future__ name")
+
+        rv.append(ast.RPY(loc, ("python", r)))
 
     l.expect_eol()
     l.expect_noblock("rpy statement")
-
-    rv = ast.RPY(loc, ("python", "3"))
 
     l.advance()
     return rv
 
 
-def finish_say(l, loc, who, what, attributes=None, temporary_attributes=None):
+def finish_say(l, loc, who, what, attributes=None, temporary_attributes=None, interact=True):
 
     if what is None:
         return None
 
-    interact = True
     with_ = None
     arguments = None
     identifier = None
@@ -2970,9 +1700,57 @@ def parse(fn, filedata=None, linenumber=1):
 
     return rv
 
+def release_deferred_errors():
+    """
+    Determine which deferred errors should be released, and adds them to  the
+    parse_errors list. As new kinds of deferred errors are added, logic should
+    be added here to determine which should be released.
+
+    Logic should only depend on early config variables - marked as such
+    in ast.EARLY_CONFIG.
+    """
+
+    def pop(queue):
+        """
+        Remove the given queue from the list of deferred errors
+        """
+        return deferred_parse_errors.pop(queue, ())
+
+    def release(queue):
+        """
+        Trigger the specified deferred as parse errors.
+        """
+        parse_errors.extend(pop(queue))
+
+    if renpy.config.check_conflicting_properties:
+        release("check_conflicting_properties")
+    else:
+        pop("check_conflicting_properties")
+
+    if renpy.config.early_developer and renpy.config.check_translate_none:
+        release("check_translate_none")
+    else:
+        pop("check_translate_none")
+
+    if renpy.config.early_developer:
+        release("duplicate_id")
+    else:
+        pop("duplicate_id")
+
+    if renpy.config.atl_pos_only:
+        pop("atl_pos_only")
+    else:
+        release("atl_pos_only")
+
+    if deferred_parse_errors:
+        raise Exception("Unknown deferred error label(s) : {}".format(tuple(deferred_parse_errors)))
+
 
 def get_parse_errors():
     global parse_errors
+
+    release_deferred_errors()
+
     rv = parse_errors
     parse_errors = [ ]
     return rv
@@ -2980,8 +1758,13 @@ def get_parse_errors():
 
 def report_parse_errors():
 
+    release_deferred_errors()
+
     if not parse_errors:
         return False
+
+    # The sound system may not be ready during exception handling.
+    renpy.config.debug_sound = False
 
     full_text = ""
 
@@ -3007,7 +1790,7 @@ def report_parse_errors():
             try:
                 print("")
                 print(i)
-            except:
+            except Exception:
                 pass
 
         print("", file=f)
@@ -3017,9 +1800,9 @@ def report_parse_errors():
     renpy.display.error.report_parse_errors(full_text, error_fn)
 
     try:
-        if renpy.game.args.command == "run": # @UndefinedVariable
-            renpy.exports.launch_editor([ error_fn ], 1, transient=1)
-    except:
+        if renpy.game.args.command == "run" or renpy.game.args.errors_in_editor: # type: ignore
+            renpy.exports.launch_editor([ error_fn ], 1, transient=True)
+    except Exception:
         pass
 
     return True

@@ -48,6 +48,12 @@ def select(dn):
 
     CURRENT.symlink_to(p)
 
+    subprocess.run([
+        RENPY / "run.sh",
+        RENPY / "launcher",
+        "set_project",
+        TESTS / dn,
+        ])
 
 def select_command(args):
     select(args.path)
@@ -96,6 +102,8 @@ def new_command(args):
 
 
     (p / "project.json").unlink()
+    (p / "game" / "guisupport.rpy").unlink()
+    (p / "game" / "guisupport.rpyc").unlink()
 
     select(p)
     edit_command(None)

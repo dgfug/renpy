@@ -20,8 +20,8 @@ translate piglatin demo_minigame_3e601161:
 # game/indepth_minigame.rpy:226
 translate piglatin demo_minigame_a92baa6b:
 
-    # e "When screens are not enough you can write a creator-defined displayable to extend Ren'Py itself. A Creator-defined displayables can process raw events and draw to the screen."
-    e "Henway creenssay areay otnay enoughay ouyay ancay riteway aay reatorcay-efinedday isplayableday otay extenday Enray'Ypay itselfay. Aay Reatorcay-efinedday isplayablesday ancay rocesspay awray eventsay anday rawday otay hetay creensay."
+    # e "When screens are not enough, you can write a creator-defined displayable to extend Ren'Py itself. A creator-defined displayable can process raw events and draw to the screen."
+    e "Henway creenssay areay otnay enoughay, ouyay ancay riteway aay reatorcay-efinedday isplayableday otay extenday Enray'Ypay itselfay. Aay reatorcay-efinedday isplayableday ancay rocesspay awray eventsay anday rawday otay hetay creensay."
 
 # game/indepth_minigame.rpy:228
 translate piglatin demo_minigame_a07dbae0:
@@ -41,7 +41,7 @@ translate piglatin play_pong_68c82e98:
     # e "You won! Congratulations."
     e "Ouyay onway! Ongratulationscay."
 
-# game/indepth_minigame.rpy:255
+# game/indepth_minigame.rpy:256
 translate piglatin pong_done_dde7e31a:
 
     # e "Would you like to play again?" nointeract

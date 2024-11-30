@@ -30,13 +30,39 @@ that occured. Possible events are:
 "end"
     Called at the end of a say statement.
 
-The callback is called with at least one keyword argument:
+The callback is called with at the keyword arguments:
 
 `interact`
     This is true if the dialogue causes an interaction to occur.
 
+`type`
+    The type of character (e.g. "nvl", "adv", "bubble").
+
+`what`
+    The text that is going to be supplied to the what displayable.
+
+`multiple`
+    The `multiple` argument to :func:`Character`.
+
+The "show" and "slow_done" callbacks are also given additional keyword
+arguments:
+
+`start`
+    The start of the current segment of dialogue, in the `what` string.
+
+`end`
+    The end of the current segment of dialogue, in the `what` string.
+
+`delay`
+    The amount of time Ren'Py will pause after the current segment of dialogue is shown,
+    or None if Ren'Py will pause until the player clicks.
+
+`last_segment`
+    True if this is the last segment of dialogue in the say statement, False otherwise.
+
+
 Other values of the positional argument and additional keyword arguments may
-be supplied in the future. The callback should written to ignore arguments it
+be supplie to the callback. The callback should be written to ignore keyword arguments it
 does not understand.
 
 Example
@@ -60,3 +86,20 @@ text is enabled::
     label start:
 
         pike "So, hanging out on Talos IV, minding my own business, when..."
+
+This is an example of how to specialize a general callback for specific
+characters::
+
+    init python:
+        import functools
+        def boopy_voice(event, interact=True, boopfile="normal_boop.ogg", **kwargs):
+            if not interact:
+                return
+
+            if event == "show_done":
+                renpy.sound.play(boopfile)
+            elif event == "slow_done":
+                renpy.sound.stop()
+
+    define nagata = Character("Naomi", callback=functools.partial(boopy_voice, boopfile="belter_boop.ogg"))
+    define chrisjen = Character("Chrisjen", callback=boopy_voice)

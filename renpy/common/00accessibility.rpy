@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -43,7 +43,7 @@ init -1500 python:
     # The character that's used for descriptive text.
     config.descriptive_text_character = None
 
-    def alt(what, interact=True):
+    def alt(what, interact=True, **kwargs):
         """
         Uses the narrator to speak `what` if self-voicing is enabled.
         """
@@ -55,7 +55,7 @@ init -1500 python:
             if c is None:
                 c = narrator
 
-            return c(what, interact=interact)
+            return c(what, interact=interact, **kwargs)
 
     def alt_statement_name():
         if _preferences.self_voicing:
@@ -112,11 +112,13 @@ init -1500 python hide:
     config.font_transforms["dejavusans"] = dejavusans
 
 screen _accessibility():
+    layer config.interface_layer
     zorder 2000
     modal True
 
     frame:
         style_group ""
+        alt _("Accessibility Menu. Use up and down arrows to navigate, and enter to activate buttons and bars.")
 
         has side "c b":
             spacing gui._scale(10)
@@ -192,6 +194,9 @@ screen _accessibility():
 
                     label _("Self-Voicing")
 
+                    if renpy.variant("touch"):
+                        text _("Self-voicing support is limited when using a touch screen.")
+
                     null height 10
 
                     textbutton _("Off"):
@@ -212,6 +217,14 @@ screen _accessibility():
 
                     null height 10
 
+                    label _("Voice Volume")
+
+                    null height 10
+
+                    bar value Preference("voice volume")
+
+                    null height 10
+
                     label _("Self-Voicing Volume Drop")
 
                     null height 10
@@ -229,4 +242,3 @@ screen _accessibility():
                 textbutton _("Return"):
                     action Hide("_accessibility")
                     yalign 1.0
-

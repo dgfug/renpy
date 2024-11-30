@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -20,7 +20,9 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
-from renpy.compat import *
+from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+
 
 
 import renpy.display
@@ -37,8 +39,8 @@ class Color(tuple):
     between various color spaces. It also represents opacity in the form
     of an alpha.
 
-    When creating a Color, at one of the `color`, `hls`, `hsv`, or `rgb`
-    arguments should be supplied. (If all are None, None is returned.)
+    When creating a Color, at most one of the `color`, `hls`, `hsv`, or
+    `rgb` arguments should be supplied. (If all are None, None is returned.)
 
     `color`
         The color, in one of the standard formats Ren'Py understands. These
@@ -102,6 +104,12 @@ class Color(tuple):
         Returns the color as a tuple of four floating point numbers giving
         the red, green, blue and alpha components as 0.0 to 1.0 values.
 
+    .. attribute:: premultiplied
+
+        Returns the color as a tuple of four floating point numbers giving
+        the red, green, blue and alpha components as 0.0 to 1.0 values, with
+        the red, green, and blue components premultiplied by the alpha.
+
     .. attribute:: alpha
 
         Returns the alpha (opacity) of this Color as a number between 0.0 and
@@ -127,36 +135,28 @@ class Color(tuple):
         if color is not None:
             c = color
 
-            if isinstance(c, tuple):
-                if isinstance(c, Color):
-                    return c
-
-                if len(c) == 4:
-                    return tuple.__new__(cls, c)
-
-                if len(c) == 3:
-                    return tuple.__new__(cls, c + (int(255 * alpha),))
-
             if isinstance(c, basestring):
                 if c[0] == '#':
                     c = c[1:]
 
-                if len(c) == 6:
-                    r = int(c[0]+c[1], 16)
-                    g = int(c[2]+c[3], 16)
-                    b = int(c[4]+c[5], 16)
+                lenc = len(c)
+
+                if lenc == 6:
+                    r = int(c[:2], 16)
+                    g = int(c[2:4], 16)
+                    b = int(c[4:], 16)
                     a = int(alpha * 255)
-                elif len(c) == 8:
-                    r = int(c[0]+c[1], 16)
-                    g = int(c[2]+c[3], 16)
-                    b = int(c[4]+c[5], 16)
-                    a = int(c[6]+c[7], 16)
-                elif len(c) == 3:
+                elif lenc == 8:
+                    r = int(c[:2], 16)
+                    g = int(c[2:4], 16)
+                    b = int(c[4:6], 16)
+                    a = int(c[6:], 16)
+                elif lenc == 3:
                     r = int(c[0], 16) * 0x11
                     g = int(c[1], 16) * 0x11
                     b = int(c[2], 16) * 0x11
                     a = int(alpha * 255)
-                elif len(c) == 4:
+                elif lenc == 4:
                     r = int(c[0], 16) * 0x11
                     g = int(c[1], 16) * 0x11
                     b = int(c[2], 16) * 0x11
@@ -164,7 +164,20 @@ class Color(tuple):
                 else:
                     raise Exception("Color string {!r} must be 3, 4, 6, or 8 hex digits long.".format(c))
 
-                return tuple.__new__(cls, (r, g, b, a))
+                return tuple.__new__(cls, (r, g, b, a)) # type: ignore
+
+            if isinstance(c, Color):
+                return c
+
+            c = tuple(c)
+
+            lenc = len(c)
+
+            if lenc == 4:
+                return tuple.__new__(cls, c)
+
+            if lenc == 3:
+                return tuple.__new__(cls, c + (int(255 * alpha),))
 
         if hsv is not None:
             rgb = colorsys.hsv_to_rgb(*hsv)
@@ -179,7 +192,7 @@ class Color(tuple):
             b = int(rgb[2] * 255)
             a = int(alpha * 255)
 
-            rv = tuple.__new__(cls, (r, g, b, a))
+            rv = tuple.__new__(cls, (r, g, b, a)) # type: ignore
             rv._rgb = rgb
             rv._hls = hls
             rv._hsv = hsv
@@ -228,6 +241,12 @@ class Color(tuple):
                 )
 
         return self._rgba
+
+    @property
+    def premultiplied(self):
+        r, g, b, a = self.rgba
+
+        return (r * a, g * a, b * a, a)
 
     @property
     def hls(self):
@@ -302,7 +321,7 @@ class Color(tuple):
             self[2] * other[2],
             self[3] * other[3]))
 
-    __rmul__ = __mul__
+    __rmul__ = __mul__ # type: ignore
 
     def interpolate_core(self, a, b, fraction):
 
@@ -345,7 +364,7 @@ class Color(tuple):
         hsv = self.interpolate_core(self.hsv, other.hsv, fraction)
         alpha = self.interpolate_core(self.alpha, other.alpha, fraction)
 
-        return Color(hsv=hsv, alpha=alpha)
+        return Color(hsv=hsv, alpha=alpha) # type: ignore
 
     def interpolate_hls(self, other, fraction):
         """
@@ -366,7 +385,7 @@ class Color(tuple):
         hls = self.interpolate_core(self.hls, other.hls, fraction)
         alpha = self.interpolate_core(self.alpha, other.alpha, fraction)
 
-        return Color(hls=hls, alpha=alpha)
+        return Color(hls=hls, alpha=alpha) # type: ignore
 
     def tint(self, fraction):
         """
@@ -413,7 +432,8 @@ class Color(tuple):
         :doc: color method
 
         Rotates this color's hue by `rotation`, and returns the new Color. `rotation`
-        is a fraction of a full rotation, to convert degrees divide by 360.0.
+        is a fraction of a full rotation (between 0.0 and 1.0). Divide by 360.0 to
+        convert to degrees.
         """
 
         h, l, s = self.hls

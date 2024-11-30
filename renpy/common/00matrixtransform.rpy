@@ -1,4 +1,4 @@
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -43,6 +43,9 @@ init -1400 python:
 
         def __call__(self, other, done):
 
+            if type(other) is SplineMatrix:
+                other = other.matrix
+
             if type(other) is not type(self):
                 return self.function(*self.args)
             else:
@@ -62,18 +65,17 @@ init -1400 python:
             return rv
 
 
-    class OffsetMatrix(TransformMatrix):
+    class OffsetMatrix(TransformMatrix, DictEquality):
         nargs = 3
         function = Matrix.offset
         __doc__ = TransformMatrix._document(Matrix.offset)
 
-    class RotateMatrix(TransformMatrix):
+    class RotateMatrix(TransformMatrix, DictEquality):
         nargs = 3
         function = Matrix.rotate
         __doc__ = TransformMatrix._document(Matrix.rotate)
 
-    class ScaleMatrix(TransformMatrix):
+    class ScaleMatrix(TransformMatrix, DictEquality):
         nargs = 3
         function = Matrix.scale
         __doc__ = TransformMatrix._document(Matrix.scale)
-

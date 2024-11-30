@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -22,49 +22,45 @@
 ################################################################################
 # Interface actions.
 init python in interface:
-    from store import OpenURL, config, Return, _preferences
+    from store import OpenURL, config, Return, _preferences, persistent
     import store
 
     import os.path
     import contextlib
 
     RENPY_URL = "http://www.renpy.org"
-    RENPY_GAMES_URL = "http://games.renpy.org"
-    DOC_PATH = os.path.join(config.renpy_base, "doc/index.html")
+    DOC_PATH = os.path.join(config.renpy_base, "doc/")
     DOC_URL = "http://www.renpy.org/doc/html/"
+    DOC_LOCAL_URL = "file:///" + DOC_PATH
 
-    LICENSE_PATH = os.path.join(config.renpy_base, "doc/license.html")
-    LICENSE_URL = "http://www.renpy.org/doc/html/license.html"
+    local_doc_exists = os.path.exists(DOC_PATH)
 
-    if os.path.exists(DOC_PATH):
-        DOC_LOCAL_URL = "file:///" + DOC_PATH
-    else:
-        DOC_LOCAL_URL = None
+    def get_doc_url(page):
+        """
+        Returns the URL to the documentation page.
+        """
 
-    if os.path.exists(LICENSE_PATH):
-        LICENSE_LOCAL_URL = "file:///" + LICENSE_PATH
-    else:
-        LICENSE_LOCAL_URL = None
+        if local_doc_exists and not persistent.use_web_doc:
+            from urllib.parse import urljoin
+            from urllib.request import pathname2url
 
-    def OpenDocumentation():
+            return urljoin('file:', pathname2url(DOC_PATH + page))
+        else:
+            return DOC_URL + page
+
+    def OpenDocumentation(page="index.html"):
         """
         An action that opens the documentation.
         """
 
-        if DOC_LOCAL_URL is not None:
-            return OpenURL(DOC_LOCAL_URL)
-        else:
-            return OpenURL(DOC_URL)
+        return OpenURL(get_doc_url(page))
 
     def OpenLicense():
         """
         An action that opens the license.
         """
 
-        if LICENSE_LOCAL_URL is not None:
-            return OpenURL(LICENSE_LOCAL_URL)
-        else:
-            return OpenURL(LICENSE_URL)
+        return OpenDocumentation("license.html")
 
     def get_sponsor_url():
         """
@@ -88,6 +84,10 @@ init python in interface:
             yield
         finally:
             links = True
+
+    # Version.
+    import re
+    version = re.sub(r'\.\d+(\w*)$', r'\1', renpy.version())
 
 # This displays the bottom of the screen. If the tooltip is not None, this displays the
 # tooltip. Otherwise, it displays a list of links (to various websites, and to the
@@ -118,8 +118,7 @@ screen bottom_info:
                     spacing INDENT
                     textbutton _("Documentation") style "l_link" action interface.OpenDocumentation()
                     textbutton _("Ren'Py Website") style "l_link" action OpenURL(interface.RENPY_URL)
-                    textbutton _("Ren'Py Games List") style "l_link" action OpenURL(interface.RENPY_GAMES_URL)
-                    textbutton _("About") style "l_link" action Jump("about")
+                    textbutton _("[interface.version]") style "l_link" action Jump("about")
 
                 hbox:
                     spacing INDENT
@@ -168,7 +167,7 @@ screen common:
             has vbox
 
             text message:
-                text_align 0.5
+                textalign 0.5
                 xalign 0.5
                 layout "subtitle"
 
@@ -198,7 +197,15 @@ screen common:
                 add SPACER
 
                 for v, l in choices:
-                    textbutton l action SetScreenVariable("selected", v)
+                    textbutton l:
+                        action SetScreenVariable("selected", v)
+                        selected_background REVERSE_IDLE
+                        selected_hover_background REVERSE_HOVER
+                        xpadding 20
+                        size_group "choice"
+                        text_selected_idle_color REVERSE_TEXT
+                        text_selected_hover_color REVERSE_TEXT
+                        text_xalign 0.5
 
                 if selected is not None:
                     $ continue_ = Return(selected)
@@ -209,7 +216,7 @@ screen common:
                 add SPACER
 
                 text submessage:
-                    text_align 0.5
+                    textalign 0.5
                     xalign 0.5
                     layout "subtitle"
 
@@ -248,7 +255,7 @@ screen launcher_input:
             has vbox
 
             text message:
-                text_align 0.5
+                textalign 0.5
                 xalign 0.5
                 layout "subtitle"
 
@@ -437,7 +444,7 @@ init python in interface:
 
                 try:
                     rv.encode("ascii")
-                except:
+                except Exception:
                     error(_("File and directory names must consist of ASCII characters."), label=None)
                     continue
 
@@ -482,7 +489,7 @@ init python in interface:
             The amount of time to pause for after showing the message.
         """
 
-        common(title, store.INTERACTION_COLOR, message, submessage=None, pause=pause, show_screen=True, **kwargs)
+        common(title, store.INTERACTION_COLOR, message, submessage=submessage, pause=pause, show_screen=True, **kwargs)
         renpy.pause(pause)
 
     def processing(message, submessage=None, complete=None, total=None, **kwargs):

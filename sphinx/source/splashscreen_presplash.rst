@@ -12,7 +12,7 @@ code applies to a splashscreen located anywhere in your game under a different
 label.
 
 To add a textual splashscreen to your game, insert code like the below anywhere in
-your script files (as long as it is not itself in a block): ::
+your script files (as long as it is not itself in a block)::
 
     label splashscreen:
         scene black
@@ -27,7 +27,7 @@ your script files (as long as it is not itself in a block): ::
         return
 
 Here's another example of a splashscreen, this time using an image and
-sound: ::
+sound::
 
     image splash = "splash.png"
 
@@ -45,7 +45,7 @@ sound: ::
 
         return
 
-And finally, with a movie file: ::
+And finally, with a movie file::
 
     label splashscreen:
 
@@ -53,16 +53,25 @@ And finally, with a movie file: ::
 
         return
 
+.. _presplash:
+
 Adding a Presplash
 ------------------
 
 A presplash is an image shown while Ren'py is reading the scripts and
 launching the game. To show such and image while the engine is starting up,
-create an image file named `presplash.png` (or `presplash.jpg`), and save it
+create an image file named :file:`presplash.png` (or :file:`presplash.jpg`), and save it
 into the game directory.
 
 presplash.png
     The image that's used when the game is loading.
+
+This will only work on computer platforms, not on android, ios or web.
+For the android platform, see :ref:`android-presplash`, and for the web,
+see :ref:`Web Presplash <web-presplash>`.
+
+The :var:`config.minimum_presplash_time` variable sets a minimum time the
+presplash is shown for.
 
 Adding a Progress Bar
 ---------------------
@@ -86,8 +95,8 @@ presplash_foreground.png
     actual progress bar.
     This may contain transparency.
 
-The way this works is that Ren'Py will first show `presplash_background.png` and
-subsequently will render `presplash_foreground.png` on top, revealing it from
+The way this works is that Ren'Py will first show :file:`presplash_background.png` and
+subsequently will render :file:`presplash_foreground.png` on top, revealing it from
 left to right as the loading progresses.
 
 The theming of the bar is completely up to you, but you can find two examples of
@@ -108,11 +117,30 @@ how things could look below:
     .. figure:: presplash/presplash_background_2.png
         :width: 100%
 
-        An slightly more elaborate example of how the progress bar background
+        A slightly more elaborate example of how the progress bar background
         could look.
 
     .. figure:: presplash/presplash_foreground_2.png
         :width: 100%
 
-        An slightly more elaborate example of how the progress bar foreground
+        A slightly more elaborate example of how the progress bar foreground
         could look.
+
+Transparent Presplash
+---------------------
+
+If the top-left pixel of the presplash background image is transparent, the
+presplash window will be transparent as well. 1-bit transparency is used,
+with pixels with 0 alpha being transparent, and all other pixels being
+opaque.
+
+
+Mobile and Web Presplash Screens
+--------------------------------
+
+The Android, iOS, and Web platforms have their own presplash screens. These
+are documented elsewhere:
+
+* Android :ref:`android-presplash`
+* iOS :ref:`ios-storyboard`
+* Web :ref:`web-presplash`

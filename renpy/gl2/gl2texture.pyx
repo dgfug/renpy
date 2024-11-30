@@ -1,6 +1,6 @@
 #@PydevCodeAnalysisIgnore
 #cython: profile=False
-# Copyright 2004-2021 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -79,6 +79,7 @@ cdef class TextureLoader:
         self.total_texture_size = 0
         self.texture_load_queue = weakref.WeakSet()
 
+        self.max_anisotropy = 1.0
         glGetFloatv(MAX_TEXTURE_MAX_ANISOTROPY_EXT, &self.max_anisotropy)
 
     def quit(self):
@@ -112,6 +113,12 @@ cdef class TextureLoader:
         rv.from_surface(surf, properties)
 
         if bl or bt or br or bb:
+
+            rv.bl = bl
+            rv.bt = bt
+            rv.br = br
+            rv.bb = bb
+
             w, h = size
 
             pw = w - bl - br
@@ -127,7 +134,8 @@ cdef class TextureLoader:
                     0.0, 0.0, pw, ph,
                     0.0, 0.0, 0.0, 0.0)
 
-            rv = GL2Model((pw, ph), mesh, ("renpy.texture",), { "tex0" : rv })
+
+            rv = GL2Model((pw, ph), mesh, ("renpy.texture",), { "tex0" : rv, "res0" : (rv.texture_width, rv.texture_height) })
 
         return rv
 
@@ -251,11 +259,12 @@ cdef class GLTexture(GL2Model):
     are no longer required.
     """
 
-    def __init__(GLTexture self, size, TextureLoader loader):
+    def __init__(GLTexture self, size, TextureLoader loader, generate=False):
 
         cdef unsigned char *pixels
         cdef unsigned char *data
         cdef unsigned char *p
+        cdef GLuint number
 
         width, height = size
 
@@ -273,8 +282,35 @@ cdef class GLTexture(GL2Model):
 
         # Update the loader.
         self.loader = loader
-        self.loader.total_texture_size += self.width * self.height * 4
 
+        # Borders.
+        self.bl = 0
+        self.bt = 0
+        self.br = 0
+        self.bb = 0
+
+        if renpy.emscripten and generate:
+            # Generate a texture name to access video frames for web
+            glGenTextures(1, &number)
+            self.number = number
+            self.loaded = True
+            self.loader.allocated.add(self.number)
+            self.mesh = Mesh2.texture_rectangle(
+                0.0, 0.0, width, height,
+                0.0, 0.0, 1.0, 1.0,
+                )
+            self.properties = { }
+
+    def has_mipmaps(GLTexture self):
+        """
+        Returns true if this texture has mipmaps (or will have mipmaps
+        when it's loaded).
+        """
+
+        return self.properties.get("mipmap", True)
+
+    def get_number(GLTexture self):
+        return self.number if renpy.emscripten else None
 
     def from_surface(GLTexture self, surface, properties):
         """
@@ -296,6 +332,11 @@ cdef class GLTexture(GL2Model):
         This renders `what` to this texture.
         """
 
+        self.properties = {
+            "mipmap" : properties.get("mipmap", True),
+            "pixel_perfect" : properties.get("pixel_perfect", False),
+            }
+
         cw, ch = size = what.get_size()
 
         loader = self.loader
@@ -303,12 +344,19 @@ cdef class GLTexture(GL2Model):
 
         # The visible size of the texture.
 
-        tw, th = draw.virt_to_draw.transform(cw, ch)
+        drawable = properties.get("drawable_resolution", True)
 
-        tw = round(tw)
-        th = round(th)
+        if drawable:
 
-        cw, ch = draw.draw_to_virt.transform(tw, th)
+            tw, th = draw.virt_to_draw.transform(cw, ch)
+
+            tw = round(tw)
+            th = round(th)
+
+        else:
+
+            tw = cw = round(cw)
+            th = ch = round(ch)
 
         tw = min(tw, loader.max_texture_width)
         th = min(th, loader.max_texture_height)
@@ -359,9 +407,6 @@ cdef class GLTexture(GL2Model):
         self.number = premultiplied
         self.loader.allocated.add(self.number)
 
-        if "pixel_perfect" in properties:
-            self.properties = { "pixel_perfect" : properties["pixel_perfect"] }
-
         self.loaded = True
 
 
@@ -378,6 +423,7 @@ cdef class GLTexture(GL2Model):
         cdef GLuint premultiplied
         cdef Program program
         cdef SDL_Surface *s
+        cdef GLuint pixel_buffer
 
         if self.loaded:
             return
@@ -403,8 +449,29 @@ cdef class GLTexture(GL2Model):
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, s.pitch // 4)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self.width, self.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, s.pixels)
+        # Use a pixel buffer to create a texture.
+        # Why use a Pixel Buffer? Apart from potentially being faster, this
+        # works around a bug in Samsung android devices running Android 11,
+        # where glTexImage2D doesn't seem to work when the pixels are not
+        # aligned.
+
+        # But it doesn't seem to work with ANGLE or emscripten, so we avoid using PBOs when
+        # angle is in use.
+
+        if not renpy.emscripten and not draw.angle:
+
+            glGenBuffers(1, &pixel_buffer)
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pixel_buffer)
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, s.h * s.pitch, s.pixels, GL_STATIC_DRAW)
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, s.pitch // 4)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self.width, self.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, <void *> 0)
+            glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
+            glDeleteBuffers(1, &pixel_buffer)
+
+        else:
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, s.pitch // 4)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self.width, self.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, s.pixels)
+
 
         mesh = Mesh2.texture_rectangle(-1.0, -1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0)
 
@@ -417,9 +484,9 @@ cdef class GLTexture(GL2Model):
 
         # Draw.
         program = self.loader.ftl_program
-        program.start()
+        program.start({})
         program.set_uniform("tex0", tex)
-        program.draw(mesh, {})
+        program.draw(mesh)
         program.finish()
 
         # Create premultiplied.
@@ -439,6 +506,65 @@ cdef class GLTexture(GL2Model):
         self.loaded = True
         self.surface = None
 
+    def load_gltexture_premultiplied(GLTexture self):
+        """
+        Loads this texture. When it's loaded, generation and number are set,
+        and the texture is ready to use.
+        """
+
+        cdef GLuint premultiplied
+        cdef Program program
+        cdef SDL_Surface *s
+        cdef GLuint pixel_buffer
+
+        if self.loaded:
+            return
+
+        draw = self.loader.draw
+
+        s = PySurface_AsSurface(self.surface)
+
+        glGenTextures(1, &premultiplied)
+
+        # Load the pixel data into tex, and set it up for drawing.
+        glActiveTexture(GL_TEXTURE0)
+
+        self.allocate_texture(premultiplied, self.width, self.height, self.properties)
+        glBindTexture(GL_TEXTURE_2D, premultiplied)
+
+        # Use a pixel buffer to create a texture.
+        # Why use a Pixel Buffer? Apart from potentially being faster, this
+        # works around a bug in Samsung android devices running Android 11,
+        # where glTexImage2D doesn't seem to work when the pixels are not
+        # aligned.
+
+        # But it doesn't seem to work with ANGLE or emscripten, so we avoid using PBOs when
+        # angle is in use.
+
+        if not renpy.emscripten and not draw.angle:
+
+            glGenBuffers(1, &pixel_buffer)
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pixel_buffer)
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, s.h * s.pitch, s.pixels, GL_STATIC_DRAW)
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, s.pitch // 4)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self.width, self.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, <void *> 0)
+            glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
+            glDeleteBuffers(1, &pixel_buffer)
+
+        else:
+
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, s.pitch // 4)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self.width, self.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, s.pixels)
+
+        self.mipmap_texture(premultiplied, self.width, self.height, self.properties)
+
+        # Store the loaded texture.
+        self.number = premultiplied
+        self.loader.allocated.add(self.number)
+
+        self.loaded = True
+        self.surface = None
+
     def allocate_texture(GLTexture self, GLuint tex, int tw, int th, properties={}):
         """
         Allocates the VRAM required to store `tex`, which is a `tw` x `th`
@@ -450,8 +576,12 @@ cdef class GLTexture(GL2Model):
         # Going from a single to multiple mipmap levels takes ~9ms when loading
         # each mipmap, while allocating the space first reduces that to ~1ms.
 
-        glBindTexture(GL_TEXTURE_2D, tex)
+        if self.has_mipmaps():
+            self.loader.total_texture_size += int(self.width * self.height * 4 * 1.34)
+        else:
+            self.loader.total_texture_size += int(self.width * self.height * 4)
 
+        glBindTexture(GL_TEXTURE_2D, tex)
 
         max_level = renpy.config.max_mipmap_level
 
@@ -467,12 +597,10 @@ cdef class GLTexture(GL2Model):
         else:
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 
-        wrap_s, wrap_t = properties.get("texture_wrap", (GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE))
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_s)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_t)
-
-        if properties.get("anisotropic", True):
+        if self.loader.max_anisotropy > 1.0:
             glTexParameterf(GL_TEXTURE_2D, TEXTURE_MAX_ANISOTROPY_EXT, self.loader.max_anisotropy)
 
         # Store the texture size that was loaded.
@@ -480,7 +608,6 @@ cdef class GLTexture(GL2Model):
         self.texture_height = th
 
         cdef GLuint level = 0
-
 
         while True:
 
@@ -523,20 +650,31 @@ cdef class GLTexture(GL2Model):
             if self.loaded:
                 self.loader.free_list.append(self.number)
 
-            self.loader.total_texture_size -= self.width * self.height * 4
+                if self.has_mipmaps():
+                    self.loader.total_texture_size -= int(self.width * self.height * 4 * 1.34)
+                else:
+                    self.loader.total_texture_size -= int(self.width * self.height * 4)
         except TypeError:
             pass # Let's not error on shutdown.
 
     def load(self):
-        self.load_gltexture()
+
+        if self.properties.get("premultiplied", False):
+            self.load_gltexture_premultiplied()
+        else:
+            self.load_gltexture()
 
     def program_uniforms(self, shader):
         shader.set_uniform("tex0", self)
+        shader.set_uniform("res0", (self.texture_width, self.texture_height))
 
     cpdef subsurface(self, rect):
         rv = GL2Model.subsurface(self, rect)
         if rv is not self:
-            rv.uniforms = { "tex0" : self }
+            rv.uniforms = {
+                "tex0" : self,
+                "res0" : (self.texture_width, self.texture_height),
+                }
         return rv
 
 class Texture(GLTexture):

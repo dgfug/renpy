@@ -23,7 +23,7 @@ translate japanese strings:
 
     # options.rpy:17
     old "Ren'Py 7 Default GUI"
-    new "Ren'Py 7 Default GUI"
+    new "Ren'Py 7 デフォルトのGUI"
 
     # options.rpy:20
     old "## Determines if the title given above is shown on the main menu screen. Set this to False to hide the title."
@@ -118,8 +118,8 @@ translate japanese strings:
     new "## プラットフォームごとの Ren'Py がゲームのセーブデータを作成する場所を制御します。セーブファイルは以下の場所に作成されます："
 
     # options.rpy:134
-    old "## Windows: %APPDATA\\RenPy\\<config.save_directory>"
-    new "## Windows: %APPDATA\\RenPy\\<config.save_directory>"
+    old "## Windows: %APPDATA%\\RenPy\\<config.save_directory>"
+    new "## Windows: %APPDATA%\\RenPy\\<config.save_directory>"
 
     # options.rpy:136
     old "## Macintosh: $HOME/Library/RenPy/<config.save_directory>"
@@ -193,25 +193,31 @@ translate japanese strings:
     old "## The username and project name associated with an itch.io project, separated by a slash."
     new "## itch.io project に関連付けられたユーザー名とプロジェクト名。二つの名前はスラッシュで分けてください。"
 
-
-
-translate japanese strings:
-
     # options.rpy:196
     old "## Set this to a string containing your Apple Developer ID Application to enable codesigning on the Mac. Be sure to change it to your own Apple-issued ID."
     new "## Mac のコード署名を有効にするために Apple Developer ID アプリケーション を含む文字列を設定します。必ず Apple が発行したあなたの ID に変更してください。"
-
-
-translate japanese strings:
 
     # options.rpy:81
     old "## Between screens of the game menu."
     new "## ゲームメニューのスクリーンを切り替える時のトランジション。"
 
-
-translate japanese strings:
-
     # options.rpy:31
     old "## Text that is placed on the game's about screen. Place the text between the triple-quotes, and leave a blank line between paragraphs."
     new "## About（バージョン情報）スクリーンに表示されるテキスト。トリプルクオートの間にテキストを入力します。段落の間には空行を挿入して下さい。"
+
+    # gui/game/options.rpy:47
+    old "## These three variables control, among other things, which mixers are shown to the player by default. Setting one of these to False will hide the appropriate mixer."
+    new "## これらの3つの変数は、特に、どのミキサーがデフォルトでプレーヤーに表示されるかを制御します。これらのいずれかをFalseに設定すると、適切なミキサーが非表示になります。"
+
+translate japanese strings:
+
+    # gui/game/options.rpy:203
+    old "## A Google Play license key is required to perform in-app purchases. It can be found in the Google Play developer console, under \"Monetize\" > \"Monetization Setup\" > \"Licensing\"."
+    new "## アプリ内課金を行うには、Google Playのライセンスキーが必要です。Google Play開発者コンソールの「収益化」→「収益化のセットアップ」→「ライセンス」で確認することができます。"
+
+translate japanese strings:
+
+    # gui/game/options.rpy:140
+    old "## Windows: %APPDATA\\RenPy\\<config.save_directory>"
+    new "## Windows: %APPDATA\\RenPy\\<config.save_directory>"
 

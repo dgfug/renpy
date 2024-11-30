@@ -10,10 +10,9 @@ rolls back.
 
 
 .. note::
-
-  While we usually attempt to keep save compatibility between releases, this
-  compatibility is not guaranteed. We may decide to break save-compatibility
-  if doing so provides a sufficiently large benefit.
+    While we usually attempt to keep save compatibility between releases, this
+    compatibility is not guaranteed. We may decide to break save-compatibility
+    if doing so provides a sufficiently large benefit.
 
 What is Saved
 =============
@@ -46,13 +45,12 @@ In this example::
     default c = 17
 
     label start:
-         $ b = 1
-         $ o.value = 42
+        $ b = 1
+        $ o.value = 42
 
 only `b` and `c` will be saved. `A` will not be saved because it does not change once
 the game begins. `O` is not saved because it does not change – the object it
 refers to changes, but the variable itself does not.
-
 
 What isn't Saved
 ================
@@ -110,27 +108,27 @@ This can be a problem in Python-defined statements. In::
 
     python:
 
-         i = 0
+        i = 0
 
-         while i < 10:
+        while i < 10:
 
-              i += 1
+            i += 1
 
-              narrator("The count is now [i].")
+            narrator("The count is now [i].")
 
 if the user saves and loads in the middle, the loop will begin anew. Using
 Ren'Py script – rather than Python – to loop avoids this problem.::
 
-   $ i = 0
+    $ i = 0
 
-   while i < 10:
+    while i < 10:
 
         $ i += 1
 
         "The count is now [i]."
 
 
-What Ren'Py can Save
+What Ren'Py Can Save
 ====================
 
 Ren'Py uses the Python pickle system to save game state. This module can
@@ -143,33 +141,88 @@ save:
   original names.
 * Character, Displayable, Transform, and Transition objects.
 
+.. _cant-save:
+
+What Ren'Py Can't Save
+======================
+
 There are certain types that cannot be pickled:
 
 * Render objects.
 * Iterator objects.
+* Generator objects.
+* Coroutine tasks and futures, like those created with ``async`` and ``await``.
 * File-like objects.
+* Network sockets, and objects that enclose them.
 * Inner functions and lambdas.
 
-By default, Ren'Py uses the cPickle module to save the game. Setting
-:var:`config.use_cpickle` to False will make Ren'Py use the pickle
-module instead. This makes the game slower, but is better at reporting
-save errors under Python 2.x. Note that this setting has no effect on
-Python 3, as the system chooses the implementation transparently in
-that case.
+This may not be an exhaustive list.
 
+Objects that can't be pickled can still be used, provided that their use
+is combined to namespaces that aren't saved by Ren'Py (like init variables,
+namespaces inside functions, or ``python hide`` blocks.)
+
+For example, using a file object like::
+
+    $ monika_file = open(config.gamedir + "/monika.chr", "w")
+    $ monika_file.write("Do not delete.\r\n")
+    $ monika_file.close()
+
+Won't work, as ``f`` could be saved between any of the three Python statements.
+Putting this in a ``python hide`` block will work::
+
+    python hide:
+
+        monika_file = open(config.gamedir + "/monika.chr", "w")
+        monika_file.write("Do not delete.\r\n")
+        monika_file.close()
+
+(Of course, using the python ``with`` statement would be cleaner.) ::
+
+    python hide:
+
+        with open(config.gamedir + "/monika.chr", "w") as monika_file:
+            monika_file.write("Do not delete.\r\n")
+
+Coroutines, like those made with ``async``, ``await``, or the ``asyncio``
+are similar. If you have::
+
+    init python:
+
+        import asyncio
+
+        async def sleep_func():
+            await asyncio.sleep(1)
+            await asyncio.sleep(1)
+
+then::
+
+    $ sleep_task = sleep_func()
+    $ asyncio.run(sleep_task)
+
+will have problems, since `sleep_task` can't be saved. But if it's not assigned
+to a variable::
+
+    $ asyncio.run(sleep_func())
+
+will run fine.
+
+.. _save-functions:
 
 Save Functions and Variables
 ============================
 
 There is one variable that is used by the high-level save system:
+:var:`save_name`.
 
-.. var:: save_name = ...
+This is a string that is stored with each save. It can be used to give
+a name to the save, to help users tell them apart.
 
-   This is a string that is stored with each save. It can be used to give
-   a name to the save, to help users tell them apart.
+More per-save data customization can be done with the Json supplementary
+data system, see :var:`config.save_json_callbacks`.
 
 There are a number of high-level save actions and functions defined in the
-:ref:`screen actions <screen-actions>`. In addition, there are the following
+:doc:`screen actions <screen_actions>`. In addition, there are the following
 low-level save and load actions.
 
 
@@ -209,6 +262,8 @@ For example::
 
 .. include:: inc/retain_after_load
 
+.. _rollback:
+
 Rollback
 ========
 
@@ -217,6 +272,61 @@ much the same way as undo/redo systems that are available in most
 modern applications. While the system takes care of maintaining the
 visuals and game variables during rollback events, there are several
 things that should be considered while creating a game.
+
+
+What Data is Rolled Back?
+==========================
+
+Rollback affects variables that have been changed after the init phase, and
+objects of revertable types reachable from those variables. The short version
+is that lists, dicts, and sets created in Ren'Py script are revertable as are
+instances of classes defined in Ren'Py scripts. Data created inside Python
+or inside Ren'Py usually isn't revertable.
+
+In more detail, inside the stores
+that Python embedded inside Ren'Py scripts run in, the object, list, dict, and
+set types have been replaced with equivalent types that are revertable. Objects
+that inherit from these types are also revertable. The :class:`renpy.Displayable`
+type inherits from the revertable object type.
+
+To make the use of revertable objects more convenient, Ren'Py modifies Python
+found inside Ren'Py script files in the following way.
+
+* Literal lists, dicts, and sets are automatically converted to the
+  revertable equivalent.
+* List, dict, and set comprehensions are also automatically converted to
+  the revertable equivalent.
+* Other python syntax, such as extended unpacking, that can create lists,
+  dicts, or sets converts the result to the revertable equivalent. However,
+  for performance reasons, double-starred parameters to functions and methods
+  (that create dictionaries of extra keyword arguments) are not converted
+  to revertable objects.
+* Classes that do not inherit from any other types automatically inherit
+  from the revertable object.
+
+In addition:
+
+* The methods and operators of revertable types have been modified to return
+  revertable objects when a list, dict, or set is produced.
+* Built in functions that return lists, dicts, and sets return a revertable
+  equivalent.
+
+Calling into Python code will not generally produce a revertable object. Some
+cases where you'll get an object that may not participate in rollback are:
+
+* Calling methods on built-in types, like the str.split method.
+* When the object is created in a Python module that's been imported, and
+  then return to Ren'Py. (For example, an instance of collections.defaultdict
+  won't participate in rollback.)
+* Objects returned from Ren'Py's API, unless documented otherwise.
+
+If such data needs to participate in rollback, it may make sense to convert
+it to a type that does partipate. For example::
+
+    # Calling list inside Python-in-Ren'Py converts a non-revertable list
+    # into a revertable one.
+    $ attrs = list(renpy.get_attributes("eileen"))
+
 
 Supporting Rollback and Roll Forward
 ====================================
@@ -314,10 +424,10 @@ possible to make a different choice.
 There are some caveats to consider when designing a game for
 fix_rollback. Ren'Py will automatically take care of locking any data
 that is given to :func:`checkpoint`. However, due to the generic nature
-of Ren'Py, it is possible to write Python that bypasses this and
-changes things in ways that may have unpredictable results. It is up
-to the game designer to block rollback at problematic locations or
-write additional Python to deal with it.
+of Ren'Py, it is possible to write scripts that bypass this and
+change things in ways that may have unpredictable results.  Most notably,
+``call screen`` doesn't work well with fixed rollback. It is up
+to the creator to block rollback at problematic locations.
 
 The internal user interaction options for menus, :func:`renpy.input`
 and :func:`renpy.imagemap` are designed to fully work with fix_rollback.
@@ -346,15 +456,6 @@ properties while the other buttons use properties with the
 Fixed Rollback and Custom Screens
 =================================
 
-When writing custom Python routines that must play nice with the
-fix_rollback system there are a few simple things to know. First of all
-the :func:`renpy.in_fixed_rollback` function can be used to determine whether
-the game is currently in fixed rollback state. Second, when in
-fixed rollback state, :func:`ui.interact` will always return the
-supplied roll_forward data regardless of what action was performed. This
-effectively means that when the :func:`ui.interact`/:func:`renpy.checkpoint`
-functions are used, most of the work is done.
-
 To simplify the creation of custom screens, two actions are
 provided to help with the most common uses. The :func:`ui.ChoiceReturn` action
 returns the value when the button it is attached to is clicked. The
@@ -362,9 +463,11 @@ returns the value when the button it is attached to is clicked. The
 action only works properly when the screen is called trough a
 ``call screen`` statement.
 
-Example::
+Examples::
 
-    screen demo_imagemap:
+    screen demo_imagemap():
+        roll_forward True
+
         imagemap:
             ground "imagemap_ground.jpg"
             hover "imagemap_hover.jpg"
@@ -376,27 +479,47 @@ Example::
             hotspot (452, 79, 78, 78) action ui.ChoiceJump("art", "go_art_lessons", block_all=False)
             hotspot (602, 316, 78, 78) action ui.ChoiceJump("home", "go_home", block_all=False)
 
-Example::
+::
 
-    python:
-        roll_forward = renpy.roll_forward_info()
-        if roll_forward not in ("Rock", "Paper", "Scissors"):
-            roll_forward = None
+    screen rps():
+        roll_forward True
 
-        ui.hbox()
-        ui.imagebutton("rock.png", "rock_hover.png", selected_insensitive="rock_hover.png", clicked=ui.ChoiceReturn("rock", "Rock", block_all=True))
-        ui.imagebutton("paper.png", "paper_hover.png", selected_insensitive="paper_hover.png", clicked=ui.ChoiceReturn("paper", "Paper", block_all=True))
-        ui.imagebutton("scissors.png", "scissors_hover.png", selected_insensitive="scissors_hover.png", clicked=ui.ChoiceReturn("scissors", "Scissors", block_all=True))
-        ui.close()
+        hbox:
+            imagebutton:
+                idle "rock.png"
+                hover "rock_hover.png"
+                selected_insensitive "rock_hover.png"
+                action ui.ChoiceReturn("rock", "Rock", block_all=True)
+            imagebutton:
+                idle "paper.png"
+                hover "paper_hover.png"
+                selected_insensitive "paper_hover.png"
+                action ui.ChoiceReturn("paper", "Paper", block_all=True)
+            imagebutton:
+                idle "scissors.png"
+                hover "scissors_hover.png"
+                selected_insensitive "scissors_hover.png"
+                action ui.ChoiceReturn("scissors", "Scissors", block_all=True)
 
-        if renpy.in_fixed_rollback():
-            ui.saybehavior()
+            if renpy.in_fixed_rollback():
+                textbutton "Advance":
+                    action Return(renpy.roll_forward_info())
+                    # required because of the block_all=True in all the other buttons
 
-        choice = ui.interact(roll_forward=roll_forward)
-        renpy.checkpoint(choice)
+    label dough:
+        call screen rps
+        $ chosen = _return
+        $ renpy.fix_rollback()
+        m "[chosen]!"
 
-    $ renpy.fix_rollback()
-    m "[choice]!"
+When writing custom Python routines that must play nice with the
+fix_rollback system there are a few simple things to know. First of all
+the :func:`renpy.in_fixed_rollback` function can be used to determine whether
+the game is currently in fixed rollback state. Second, when in
+fixed rollback state, :func:`ui.interact` will always return the
+supplied roll_forward data regardless of what action was performed. This
+effectively means that when the :func:`ui.interact`/:func:`renpy.checkpoint`
+functions are used, most of the work is done.
 
 
 Rollback-blocking and -fixing Functions
@@ -424,5 +547,12 @@ For example::
 
         $ o.value += 1
 
-        "o.value is [o.value]. It will increase each time you rolllback and then click ahead."
+        "o.value is [o.value]. It will increase each time you rollback and then click ahead."
 
+Rollback-Supporting Classes
+===========================
+
+The following classes exist to help support the use of rollback in your
+game. They may be useful in some circumstances.
+
+.. include:: inc/rollbackclasses
